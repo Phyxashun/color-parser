@@ -1,0 +1,17 @@
+{
+  "name": "color-parser",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest",
+    "start": "bun run index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "vitest": "^4.0.15"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
