@@ -1,6 +1,28 @@
 {
     "cSpell.words": [
+        "ANTLR",
+        "binop",
+        "cbrt",
+        "cmyk",
+        "Cmyk",
+        "CMYK",
+        "currentcolor",
+        "ebnf",
+        "EBNF",
+        "Linearization",
         "LPAREN",
-        "RPAREN"
+        "Nearley",
+        "oklab",
+        "Oklab",
+        "OKLAB",
+        "oklch",
+        "OKLCH",
+        "prophoto",
+        "rgba",
+        "RGBA",
+        "RPAREN",
+        "RRGGBB",
+        "RRGGBBAA",
+        "srgb"
     ]
 }
