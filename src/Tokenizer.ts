@@ -1,74 +1,50 @@
-/// <reference types='../types/Tokenizer.d.ts' />
 // src/Tokenizer.ts
 
-enum TokenType {
-    // Structure
-    LPAREN = 'LPAREN',
-    RPAREN = 'RPAREN',
-    COMMA = 'COMMA',
-    SLASH = 'SLASH',
-    WHITESPACE = 'WHITESPACE',
-
-    // Literals
-    NUMBER = 'NUMBER',
-    PERCENT = 'PERCENT',
-    DIMENSION = 'DIMENSION',    // deg | rad | grad | turn
-    HEXCOLOR = 'HEXCOLOR',
-
-    // Identifiers
-    IDENTIFIER = 'IDENTIFIER',        // names, keywords, channels
-    FUNCTION = 'FUNCTION',     // rgb, hsl, lab, color, etc.
-
-    // Operators
-    PLUS = 'PLUS',
-    MINUS = 'MINUS',
-    STAR = 'STAR',
-
-    // End of File
-    EOF = 'EOF',
-}
+import { TokenType, type Token } from '../types/TokenizerTypes';
+import { ListNode, LinkedList } from './LinkedList';
 
 export class Tokenizer {
     private readonly source: string = '';
     private cursor: number = 0;
-    public tokens: Token[] = [];
+    public tokens: LinkedList;
 
     constructor(input: string) {
         this.source = input;
+        this.tokens = new LinkedList();
     }
 
-    public tokenize(): Token[] {
-        while (!this.spec.isEof()) {
+    public tokenize(): LinkedList {
+        while (!this.isEof()) {
             const char = this.current();
 
             if (this.spec.isWhitespace(char)) {
-                this.tokens.push(this.Whitespace());
+                this.tokens.append(this.Whitespace());
                 continue;
             }
 
             if (this.spec.isHash(char)) {
-                this.tokens.push(this.HexColor());
+                this.tokens.append(this.HexColor());
                 continue;
             }
 
             if (
                 this.spec.isDigit(char) ||
                 this.spec.isSign(char) ||
-                char === "."
+                this.spec.isDot(char)
             ) {
-                this.tokens.push(this.NumberLike());
+                this.tokens.append(this.NumberLike());
                 continue;
             }
 
             if (this.spec.isIdentifierStart(char)) {
-                this.tokens.push(this.IdentifierOrFunction());
+                this.tokens.append(this.IdentifierOrFunction());
                 continue;
             }
 
-            this.tokens.push(this.Operator());
+            this.tokens.append(this.Operator());
         }
 
-        this.tokens.push({
+        this.tokens.append({
             type: TokenType.EOF,
             value: "<end>",
             start: this.cursor,
@@ -179,7 +155,7 @@ export class Tokenizer {
             throw new SyntaxError(`Unexpected character '${char}' at ${start}`)
         }
 
-        const typeMap: Record<string, TokenType> = {
+        const typeMap = {
             "(": TokenType.LPAREN,
             ")": TokenType.RPAREN,
             ",": TokenType.COMMA,
@@ -187,26 +163,37 @@ export class Tokenizer {
             "+": TokenType.PLUS,
             "-": TokenType.MINUS,
             "*": TokenType.STAR
+        } as const;
+
+        type OperatorChar = keyof typeof typeMap;
+
+        if (!(char in typeMap)) {
+            throw new SyntaxError(`Unexpected character '${char}' at ${start}`);
         }
 
-        const type = typeMap[char]
-        if (!type) {
-            throw new SyntaxError(`Unexpected character '${char}' at ${start}`)
-        }
+        const type: TokenType = typeMap[char as OperatorChar];
 
-        return { type, value: char, start, end: this.cursor }
+        return {
+            type,
+            value: char,
+            start,
+            end: this.cursor
+        };
     }
 
-    public *[Symbol.iterator](): Iterator<Token> {
-        for (const token of this.tokens) {
-            yield token;
+    public *[Symbol.iterator](): Iterator<ListNode> {
+        for (const listNode of this.tokens) {
+            yield listNode;
         }
     }
 
     public toString(): string {
-        return this.tokens
-            .map(token => `Token ${JSON.stringify(token)}`)
-            .join('\n');
+        let result = ``;
+        for (const listNode of this.tokens) {
+            result += JSON.stringify(listNode, null, 2);
+            result += `\n`;
+        }
+        return result;
     }
 
     public consume(): string {
@@ -236,8 +223,11 @@ export class Tokenizer {
         return this.source[index] ?? '';
     }
 
+    private isEof(): boolean {
+        return this.cursor >= this.source.length;
+    }
+
     private spec = {
-        isEof: () => this.cursor >= this.source.length,
         isWhitespace: (char: string) => char === " " || char === "\t" || char === "\n",
         isDigit: (char: string) => char >= "0" && char <= "9",
         isHash: (char: string) => char === '#',
@@ -245,6 +235,7 @@ export class Tokenizer {
         isIdentifierStart: (char: string) => /[a-zA-Z_-]/.test(char),
         isIdentifierChar: (char: string) => /[a-zA-Z0-9_-]/.test(char),
         isSign: (char: string) => char === "+" || char === "-",
+        isDot: (char: string) => char === ".",
         isDimensionStart: (char: string) => /[a-zA-Z]/.test(char),
     }
 } // End class Tokenizer

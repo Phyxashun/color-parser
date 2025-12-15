@@ -1,6 +1,6 @@
 // types/Tokenizer.d.ts
 
-declare enum TokenType {
+export enum TokenType {
     // Structure
     LPAREN = 'LPAREN',
     RPAREN = 'RPAREN',
@@ -44,7 +44,7 @@ interface DimensionToken<T extends TokenType> extends PositionToken<T> {
     unit: string;
 }
 
-type Token =
+export type Token =
     | PositionToken<TokenType.LPAREN>
     | PositionToken<TokenType.RPAREN>
     | PositionToken<TokenType.COMMA>
@@ -58,5 +58,16 @@ type Token =
     | PositionToken<TokenType.FUNCTION>
     | PositionToken<TokenType.PLUS>
     | PositionToken<TokenType.MINUS>
-    | PositionToken<TokenType.START>
-    | ValueToken<TokenType.EOF>
+    | PositionToken<TokenType.STAR>
+    | PositionToken<TokenType.EOF>
+
+export interface ITokenizer {
+    tokens: Token[];
+    tokenize(): Token[];
+    [Symbol.iterator](): Iterator<Token>;
+    toString(): string;
+    consume(): string;
+    current(): string;
+    lookahead(offset?: number): string;
+    lookbehind(offset?: number): string | null;
+}
