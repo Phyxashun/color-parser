@@ -10,7 +10,9 @@ const options = {
 
 //const code = 'rgba(100, 255, -50, 50% - 10 + 20)';
 
-const code = '#ffffff';
+//const code = '#ffffff';
+
+const code = 'rgba(100 200 255 / 50%)'
 
 const tokenizer = new Tokenizer(code);
 
