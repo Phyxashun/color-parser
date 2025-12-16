@@ -1,50 +1,47 @@
 // src/Tokenizer.ts
 
-import { TokenType, type Token } from '../types/TokenizerTypes';
-import { ListNode, LinkedList } from './LinkedList';
+import { TokenSpec, TokenType, type Token } from '../types/TokenizerTypes';
 
 export class Tokenizer {
     private readonly source: string = '';
     private cursor: number = 0;
-    public tokens: LinkedList;
+    public tokens: Token[] = [];
 
     constructor(input: string) {
         this.source = input;
-        this.tokens = new LinkedList();
     }
 
-    public tokenize(): LinkedList {
+    public tokenize(): Token[] {
         while (!this.isEof()) {
             const char = this.current();
 
-            if (this.spec.isWhitespace(char)) {
-                this.tokens.append(this.Whitespace());
+            if (TokenSpec.isWhitespace(char)) {
+                this.tokens.push(this.Whitespace());
                 continue;
             }
 
-            if (this.spec.isHash(char)) {
-                this.tokens.append(this.HexColor());
+            if (TokenSpec.isHash(char)) {
+                this.tokens.push(this.HexColor());
                 continue;
             }
 
             if (
-                this.spec.isDigit(char) ||
-                this.spec.isSign(char) ||
-                this.spec.isDot(char)
+                TokenSpec.isDigit(char) ||
+                TokenSpec.isOperator(char) ||
+                TokenSpec.isDecimal(char)
             ) {
-                this.tokens.append(this.NumberLike());
+                this.tokens.push(this.NumberLike());
                 continue;
             }
 
-            if (this.spec.isIdentifierStart(char)) {
-                this.tokens.append(this.IdentifierOrFunction());
+            if (TokenSpec.isIdentifierStart(char)) {
+                this.tokens.push(this.IdentifierOrFunction());
                 continue;
             }
 
-            this.tokens.append(this.Operator());
+            this.tokens.push(this.Operator());
         }
-
-        this.tokens.append({
+        this.tokens.push({
             type: TokenType.EOF,
             value: "<end>",
             start: this.cursor,
@@ -56,19 +53,19 @@ export class Tokenizer {
 
     private Whitespace(): Token {
         const start = this.cursor;
-        while (this.spec.isWhitespace(this.current())) this.consume();
+        while (TokenSpec.isWhitespace(this.current())) this.consume();
         return {
             type: TokenType.WHITESPACE,
             value: "<whitespace>",
-            start: start,
+            start,
             end: this.cursor
         };
     }
 
     private HexColor(): Token {
-        const start = this.cursor++;
+        const start = this.consume();
 
-        while (this.spec.isHexDigit(this.current())) this.consume();
+        while (TokenSpec.isHexDigit(this.current())) this.consume();
         const hexColor = this.source.slice(start, this.cursor);
 
         switch (hexColor.length) {
@@ -90,19 +87,27 @@ export class Tokenizer {
     private NumberLike(): Token {
         const start = this.cursor;
 
-        // Position or Negative Number
-        if (this.spec.isSign(this.current())) this.consume();
+        // Check if sign is followed by digit or dot
+        if (TokenSpec.isOperator(this.current())) {
+
+            const nextChar = this.lookahead();
+
+            if (TokenSpec.isDigit(nextChar) || TokenSpec.isDecimal(nextChar)) {
+                this.consume();
+            }
+        }
 
         // Collect all digits
-        while (this.spec.isDigit(this.current())) this.consume();
-        if (this.current() === ".") {
+        while (TokenSpec.isDigit(this.current())) this.consume();
+        if (TokenSpec.isDecimal(this.current())) {
             this.consume();
-            while (this.spec.isDigit(this.current())) this.consume();
+            while (TokenSpec.isDigit(this.current())) this.consume();
         }
+
         const number = this.source.slice(start, this.cursor);
 
         // TokenType.PERCENT
-        if (this.current() === "%") {
+        if (TokenSpec.isPercent(this.current())) {
             this.consume();
             return {
                 type: TokenType.PERCENT,
@@ -114,9 +119,9 @@ export class Tokenizer {
         }
 
         // TokenType.DIMENSION
-        if (this.spec.isDimensionStart(this.current())) {
+        if (TokenSpec.isDimensionStart(this.current())) {
             const unitStart = this.cursor;
-            while (this.spec.isIdentifierChar(this.current())) this.consume();
+            while (TokenSpec.isIdentifierChar(this.current())) this.consume();
             return {
                 type: TokenType.DIMENSION,
                 value: number,
@@ -136,19 +141,31 @@ export class Tokenizer {
     }
 
     private IdentifierOrFunction(): Token {
-        const start = this.cursor
-        while (this.spec.isIdentifierChar(this.current())) this.cursor++
-        const value = this.source.slice(start, this.cursor)
+        const start = this.cursor;
+        while (TokenSpec.isIdentifierChar(this.current())) this.consume();
+
+        const value = this.source.slice(start, this.cursor);
 
         if (this.current() === "(") {
-            return { type: TokenType.FUNCTION, value, start, end: this.cursor }
+            return {
+                type: TokenType.FUNCTION,
+                value,
+                start,
+                end: this.cursor
+            };
         }
 
-        return { type: TokenType.IDENTIFIER, value, start, end: this.cursor }
+        return {
+            type: TokenType.IDENTIFIER,
+            value,
+            start,
+            end: this.cursor
+        };
     }
 
     private Operator(): Token {
-        const start = this.cursor++
+        const start = this.consume();
+
         const char = this.source[start]
 
         if (!char) {
@@ -165,13 +182,11 @@ export class Tokenizer {
             "*": TokenType.STAR
         } as const;
 
-        type OperatorChar = keyof typeof typeMap;
-
         if (!(char in typeMap)) {
             throw new SyntaxError(`Unexpected character '${char}' at ${start}`);
         }
 
-        const type: TokenType = typeMap[char as OperatorChar];
+        const type: TokenType = typeMap[char as keyof typeof typeMap];
 
         return {
             type,
@@ -181,62 +196,46 @@ export class Tokenizer {
         };
     }
 
-    public *[Symbol.iterator](): Iterator<ListNode> {
-        for (const listNode of this.tokens) {
-            yield listNode;
+    public *[Symbol.iterator](): Iterator<Token> {
+        for (const token of this.tokens) {
+            yield token;
         }
     }
 
     public toString(): string {
         let result = ``;
-        for (const listNode of this.tokens) {
-            result += JSON.stringify(listNode, null, 2);
-            result += `\n`;
+        for (const token of this.tokens) {
+            result += `${token}\n`;
         }
         return result;
     }
 
-    public consume(): string {
-        const char = this.current();
-        this.cursor++;
-        return char;
+    public consume(): number {
+        const index = this.cursor++;
+        if (index >= this.source.length - 1) return 0;
+        return index;
     }
 
     public current(): string {
-        return (this.cursor <= this.source.length)
-            ? this.source[this.cursor] ?? ''
-            : this.source[this.source.length - 1] ?? '';
+        const index = this.cursor;
+        if (index < 0 || index >= this.source.length - 1) return '';
+        return this.source[index]!;
     }
 
     public lookahead(offset: number = 1): string {
         const index = this.cursor + offset;
-        return (index <= this.source.length)
-            ? this.source[index] ?? ''
-            : this.source[this.source.length - 1] ?? '';
+        if (index >= this.source.length - 1) return '';
+        return this.source[index]!;
     }
 
-    public lookbehind(offset: number = 1): string | null {
+    public lookbehind(offset: number = 1): string {
         const index = this.cursor - offset;
-        if (index < 0) {
-            return null;
-        }
-        return this.source[index] ?? '';
+        if (index < 0) return '';
+        return this.source[index]!;
     }
 
     private isEof(): boolean {
         return this.cursor >= this.source.length;
-    }
-
-    private spec = {
-        isWhitespace: (char: string) => char === " " || char === "\t" || char === "\n",
-        isDigit: (char: string) => char >= "0" && char <= "9",
-        isHash: (char: string) => char === '#',
-        isHexDigit: (char: string) => /[0-9a-fA-F]/.test(char),
-        isIdentifierStart: (char: string) => /[a-zA-Z_-]/.test(char),
-        isIdentifierChar: (char: string) => /[a-zA-Z0-9_-]/.test(char),
-        isSign: (char: string) => char === "+" || char === "-",
-        isDot: (char: string) => char === ".",
-        isDimensionStart: (char: string) => /[a-zA-Z]/.test(char),
     }
 } // End class Tokenizer
 

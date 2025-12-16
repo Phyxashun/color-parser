@@ -1,5 +1,18 @@
 // types/Tokenizer.d.ts
 
+export const TokenSpec = {
+    isWhitespace: (ch: string) => ch === ' ' || ch === '\t' || ch === '\n',
+    isDigit: (ch: string) => ch >= '0' && ch <= '9',
+    isHash: (ch: string) => ch === '#',
+    isHexDigit: (ch: string) => /[0-9a-fA-F]/.test(ch),
+    isIdentifierStart: (ch: string) => /[a-zA-Z_-]/.test(ch),
+    isIdentifierChar: (ch: string) => /[a-zA-Z0-9_-]/.test(ch),
+    isOperator: (ch: string) => ch === '+' || ch === '-',
+    isDecimal: (ch: string) => ch === '.',
+    isPercent: (ch: string) => ch === '%',
+    isDimensionStart: (ch: string) => /[a-zA-Z]/.test(ch),
+} as const;
+
 export enum TokenType {
     // Structure
     LPAREN = 'LPAREN',
