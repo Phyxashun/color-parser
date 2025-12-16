@@ -1,5 +1,6 @@
+// index.ts
 
-import Tokenizer, { DiagnosticError, formatDiagnostic } from './src/DFATokenizer.ts';
+import Tokenizer, { DiagnosticError, formatDiagnostic } from './src/Tokenizer.ts';
 import util from 'util';
 
 const options = {
@@ -12,22 +13,13 @@ const options = {
 
 //const code = '#ffffff';
 
-const code = 'rgba(100 200 255 / 50%)'
+//const code = 'rgba(100 200 255 / 50%)'
+
+const code = "Hello 'TypeScript', and hello world!";
 
 const tokenizer = new Tokenizer(code);
+const tokens = tokenizer.tokens;
 
-try {
-    const tokens = tokenizer.tokenize();
-
-    for (const token of tokens) {
-        console.log(`Token ${util.inspect(token, options)}`);
-    }
-
-} catch (err) {
-    if (err instanceof DiagnosticError) {
-        console.log();
-        console.error(formatDiagnostic(err));
-    } else {
-        throw err;
-    }
+for (const token of tokens) {
+    console.log(util.inspect(token, options));
 }

@@ -3,18 +3,12 @@
   "module": "index.ts",
   "type": "module",
   "private": true,
-  "scripts": {
-    "test": "vitest",
-    "start": "bun run index.ts"
-  },
   "devDependencies": {
     "@types/bun": "latest",
-    "vitest": "^4.0.15"
+    "ts-node": "^10.9.2",
+    "vitest": "^4.0.16"
   },
   "peerDependencies": {
     "typescript": "^5"
-  },
-  "dependencies": {
-    "ts-node": "^10.9.2"
   }
 }
