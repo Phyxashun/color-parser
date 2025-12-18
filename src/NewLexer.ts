@@ -1,5 +1,6 @@
 
 import { Tree } from './PrettyTree.ts';
+import { RESET, RED, YELLOW, GREEN, BLUE, BOLD } from './AnsiCodes.ts';
 
 /**
  * Deterministic Finite Automaton
@@ -14,8 +15,6 @@ import { Tree } from './PrettyTree.ts';
  *  F               Accepting states                    { q2 }
  * 
  */
-let code: any[] = [];
-
 interface Token {
     type: TokenType;
     value: string;
@@ -57,6 +56,8 @@ const TokenType = {
     LPAREN: 'LPAREN',          // '('
     RPAREN: 'RPAREN',          // ')'
     DELIMITER: 'DELIMITER',    // all other delimiters, puntuators, operators
+    PUNCTUATOR: 'PUNCTUATOR',
+    OPERATOR: 'OPERATOR',
 
     // Possibly ignored Tokens
     WHITESPACE: 'WHITESPACE',  // all whitespace
@@ -65,15 +66,29 @@ const TokenType = {
 } as const;
 
 // Σ (Sigma) - the set of allowed characters
-const CharClass = {
+const CharClass: {
+    readonly Whitespace: "Whitespace";
+    readonly Quote: "Quote";
+    readonly Letter: "Letter";
+    readonly Digit: "Digit";
+    readonly Percent: "Percent";
+    readonly Dot: "Dot";
+    readonly LParen: "LParen";
+    readonly RParen: "RParen";
+    readonly Comma: "Comma";
+    readonly Slash: "Slash";
+    readonly Hash: "Hash";
+    readonly Hex: "Hex";
+    readonly Operator: "Operator";
+    readonly Other: "Other";
+    readonly EOF: "EOF";
+} = {
     Whitespace: 'Whitespace',
     Quote: 'Quote',
     Letter: 'Letter',
     Digit: 'Digit',
     Percent: 'Percent',
     Dot: 'Dot',
-    Plus: 'Plus',
-    Minus: 'Minus',
     LParen: 'LParen',
     RParen: 'RParen',
     Comma: 'Comma',
@@ -94,8 +109,6 @@ const CharSpec: CharClassType = [
     [CharClass.Quote, (char: string) => char === '\"' || char === "\'"],
     [CharClass.Percent, (char: string) => char === '%'],
     [CharClass.Dot, (char: string) => char === '.'],
-    [CharClass.Plus, (char: string) => char === '+'],
-    [CharClass.Minus, (char: string) => char === '-'],
     [CharClass.LParen, (char: string) => char === '('],
     [CharClass.RParen, (char: string) => char === ')'],
     [CharClass.Comma, (char: string) => char === ','],
@@ -104,6 +117,10 @@ const CharSpec: CharClassType = [
     [CharClass.Hex, (char: string) => hexRegex.test(char)],
     [CharClass.Operator, (char: string) => {
         switch (char) {
+            case "!": return true;
+            case "+": return true;
+            case "-": return true;
+            case "\\": return true;
             case "'": return true;
             case '"': return true;
             case '*': return true;
@@ -112,8 +129,6 @@ const CharSpec: CharClassType = [
     }],
     [CharClass.EOF, (char: string) => /$(?![\r\n])/.test(char)]
 ]
-
-const CharSpecMap = new Map(CharSpec);
 
 const classify = (char: string): CharClass => {
     for (const [charClass, charClassFn] of CharSpec) {
@@ -124,17 +139,6 @@ const classify = (char: string): CharClass => {
 // End of Σ (Sigma)
 
 // Q - the set of all possible states
-export function createState<K extends string>(obj: StateType<K>) {
-    const newStateObj = { ...State, ...obj } as const;
-
-    // Return the merged object and a new type union
-    return {
-        states: newStateObj,
-        // Helper to extract the union of values for Record keys
-        Type: {} as typeof newStateObj[keyof typeof newStateObj]
-    };
-}
-
 const State = {
     Start: '<start>',
     Whitespace: '<whitespace>',
@@ -143,6 +147,7 @@ const State = {
     Integer: '<integer>',
     Float: '<float>',
     Delimiter: '<delimiter>',
+    Operator: '<operator>',
     Error: '<error>',
 } as const;
 
@@ -159,6 +164,7 @@ const Transition: TransitionType = {
         [CharClass.LParen]: State.Delimiter,
         [CharClass.RParen]: State.Delimiter,
         [CharClass.Comma]: State.Delimiter,
+        [CharClass.Operator]: State.Operator,
         [CharClass.Other]: State.Error,
     },
 
@@ -191,6 +197,10 @@ const Transition: TransitionType = {
         [CharClass.Comma]: State.Delimiter,
     },
 
+    [State.Operator]: {
+        [CharClass.Operator]: State.Operator,
+    },
+
     [State.Error]: {
         [CharClass.Other]: State.Error,
     }
@@ -205,19 +215,22 @@ const Accepting: AcceptingType = {
     [State.Integer]: TokenType.NUMBER,
     [State.Float]: TokenType.NUMBER,
     [State.Delimiter]: TokenType.DELIMITER,
+    [State.Operator]: TokenType.OPERATOR,
     [State.Error]: TokenType.ERROR,
 }
 // End of F
 
 export default class Tokenizer {
     private readonly source: string;
+    private debug: boolean = false;
     private index = 0;
     private line = 1;
     private column = 1;
     private readonly tokens: Token[] = [];
 
-    constructor(input: string) {
+    constructor(input: string, debug?: boolean) {
         this.source = input ?? '';
+        this.debug = debug ?? false;
     }
 
     public tokenize = (): Token[] => {
@@ -262,12 +275,16 @@ export default class Tokenizer {
             const value: string = this.source.slice(startPos.index, endPos.index);
 
             switch (state) {
+
                 case State.Start:
                     if (!this.isEOF()) continue;
                     break;
+
                 case State.Whitespace:
                     // If we later want to ignore Whitespace...we just continue.
                     continue;
+
+                case State.Operator:
                 case State.Delimiter:
                 case State.Identifier:
                 case State.Integer:
@@ -278,6 +295,7 @@ export default class Tokenizer {
                         value
                     });
                     break;
+
                 case State.HexValue:
                     const match = value.match(hexRegex);
                     if (match) {
@@ -289,21 +307,7 @@ export default class Tokenizer {
                         break;
                     } else {
                         state = State.Error;
-                        continue;
-
-                        //const prefix = this.source.substring(0, startPos.index);
-                        //const target = this.source.substring(startPos.index, endPos.index);
-                        //const suffix = this.source.substring(endPos.index);
-                        //const newSource = `${RESET}${prefix}\x1b[1;33;21m${target}${RESET}${suffix}`
-
-                        code.push({
-                            State: state,
-                            Error: 'Invalid token',
-                            Token: value,
-                            //Source: newSource,
-                            StartPosition: startPos.index,
-                            EndPosition: endPos.index,
-                        });
+                        this.displayError(state, startPos.index, endPos.index, value);
                         continue;
                     }
                 // INVALID TOKEN
@@ -338,6 +342,31 @@ export default class Tokenizer {
             line: this.line,
             column: this.column,
         };
+    }
+
+    private displayError(state: State, startPos: number, endPos: number, value: any) {
+        if (!this.debug) return;
+        const prefix = this.source.substring(0, startPos);
+        const target = this.source.substring(startPos, endPos);
+        const suffix = this.source.substring(endPos);
+        const newSource = `${BLUE}${prefix}${YELLOW}${BOLD}${target}${RESET}${BLUE}${suffix}${RESET}`
+        const pL = ' '.repeat(prefix.length);
+        const tL = '~'.repeat(target.length);
+        const sL = ' '.repeat(suffix.length);
+        const marker = `${RESET}${pL}${RED}${BOLD}${tL}${RESET}${sL}`;
+
+        const code = [{
+            State: state,
+            Error: `${RED}${BOLD}Invalid token${RESET}`,
+            Token: value,
+            Source: newSource,
+            '': marker,
+            StartPosition: startPos,
+            EndPosition: endPos,
+        }];
+
+        console.log();
+        console.log(Tree(code, "Tokenizer Error Log", "Detailed Information", undefined, true, false));
     }
 }
 
@@ -403,23 +432,25 @@ export const formatDiagnostic = (err: DiagnosticError): string => {
 }
 
 
-// Custom function
-const createTokenTree = (tokens: Token[], rootLabel: string = 'Token Stream') => {
-    return {
-        label: rootLabel,
-        nodes: tokens.map((token, index) => ({
-            label: `Token [${index}] (${token.type})`,
-            leaf: token
-        }))
-    };
-}
+// SMALL TESTING
+(() => {
+    const createTokenTree = (tokens: Token[], rootLabel: string = 'Token Stream') => {
+        return {
+            label: rootLabel,
+            nodes: tokens.map((token, index) => ({
+                label: `Token [${index}] (${token.type})`,
+                leaf: token
+            }))
+        };
+    }
 
-// EXAMPLE:
-const input = 'price 4.99 100(3 5) #ff #ffff';
-const tokenizer: Tokenizer = new Tokenizer(input);
-const tokens: Token[] = tokenizer.tokenize();
+    // EXAMPLE:
+    const debug = true;
+    const input = 'price + 4.99 * 100! - (3 * 5) #ffff';
 
-console.log();
-console.log(Tree(code, "Error Log", "Messages", undefined, true, false));
-console.log();
-console.log(Tree(tokens, 'Token Stream', 'Token', createTokenTree));
+    const tokenizer: Tokenizer = new Tokenizer(input, debug);
+    const tokens: Token[] = tokenizer.tokenize();
+
+    console.log();
+    console.log(Tree(tokens, 'Token Stream', 'Token', createTokenTree));
+})();

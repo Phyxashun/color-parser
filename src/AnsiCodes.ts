@@ -68,38 +68,35 @@ For example, Bold Red on Yellow Background would be:
 *   \x1b[1;31;43m Your Text \x1b[0m.
 *                 ---------
 */
-import util from 'util';
-import { type ArchyNode, type ArchyNodes, Tree } from './PrettyTree.ts';
+export class Ansi {
+    static Codes = {
+        Pre: '\x1b[', // or octal: '\033['
+        Suf: 'm',
+        Sep: ',',
 
-const Codes = [
-    { Pre: '\x1b[' }, // or octal: '\033['
-    { Suf: 'm' },
-    { Sep: ',' },
+        // BASIC CODES
+        Reset: '0',
+        Bold: '1',
+        Dim: '2',
+        Italic: '3',
+        Underline: '4',
+        DoubleUnderline: '21',
+        Blink: '5',
+        Inverse: '7',
+        Hidden: '8',
+        Strikethrough: '9',
 
-    // BASIC CODES
-    { Reset: '0' },
-    { Bold: '1' },
-    { Dim: '2' },
-    { Italic: '3' },
-    { Underline: '4' },
-    { DoubleUnderline: '21' },
-    { Blink: '5' },
-    { Inverse: '7' },
-    { Hidden: '8' },
-    { Strikethrough: '9' },
+        // FOREGROUND
+        Black: '30',
+        Red: '31',
+        Green: '32',
+        Yellow: '33',
+        Blue: '34',
+        Magenta: '35',
+        Cyan: '36',
+        White: '37',
 
-    // FOREGROUND
-    { Black: '30' },
-    { Red: '31' },
-    { Green: '32' },
-    { Yellow: '33' },
-    { Blue: '34' },
-    { Magenta: '35' },
-    { Cyan: '36' },
-    { White: '37' },
-
-    // BACKGROUND
-    {
+        // BACKGROUND
         Bg: {
             Black: '40',
             Red: '41',
@@ -109,11 +106,9 @@ const Codes = [
             Magenta: '45',
             Cyan: '46',
             White: '47',
-        }
-    },
+        },
 
-    // BRIGHT FOREGROUND AND BACKGROUND
-    {
+        // BRIGHT FOREGROUND AND BACKGROUND
         Br: {
             Fg: {
                 Black: '90',
@@ -135,35 +130,27 @@ const Codes = [
                 Cyan: '106',
                 White: '107',
             }
-        }
-    },
+        },
 
-    // EXTENDED COLOR SUPPORT: 256 Colors; where ID is 0-255
-    {
+        // EXTENDED COLOR SUPPORT: 256 Colors; where ID is 0-255
         256: {
             Fg: (ID: number) => `38;5;{${ID}}`,
             Bg: (ID: number) => `48;5;{${ID}}`,
-        }
-    },
+        },
 
-    // EXTENDED COLOR SUPPORT: TrueColor (RGB), where r, g, b are 0-255
-    {
+        // EXTENDED COLOR SUPPORT: TrueColor (RGB), where r, g, b are 0-255
         True: {
             Fg: (r: number, g: number, b: number) => `38;2;{${r}};{${g}};{${b}}`,
             Bg: (r: number, g: number, b: number) => `48;2;{${r}};{${g}};{${b}}`,
-        }
-    },
+        },
 
-    // SCREEN CONTROL
-    {
+        // SCREEN CONTROL
         Clear: {
             Screen: '2J',
             Line: '2K',
-        }
-    },
+        },
 
-    // CURSOR CONTROL
-    {
+        // CURSOR CONTROL
         Cursor: {
             SavePosition: 's',
             RestorePosition: 'u',
@@ -175,65 +162,143 @@ const Codes = [
                 Left: (n: number) => `{${n}}D`,
             }
         }
-    },
-];
+    }
 
-/**
- * A custom tree data creation function for the 'Codes' object that preserves
- * the structure needed for PrettyTree to apply colors.
- * @param data The array of code objects.
- * @param rootLabel The label for the root of the tree.
- * @returns An ArchyNode object ready for rendering.
- */
-const createAnsiCodesTree = (data: any, rootLabel = 'Ansi Escape Codes') => {
-    const processNestedObject = (obj: Object): ArchyNodes => {
-        return Object.entries(obj).map(([key, value]) => {
-            if (typeof value === 'object' && value !== null) {
-                return {
-                    label: key,
-                    nodes: processNestedObject(value)
-                };
+    static get PRE() {
+        return Ansi.Codes.Pre;
+    }
+
+    static get SUF() {
+        return Ansi.Codes.Suf;
+    }
+
+    static createAnsiSequence(path: string): string {
+        const parts = path.split('.');
+        let code: any = this.Codes;
+
+        // Navigate through the nested structure
+        for (const part of parts) {
+            if (code[part] === undefined) {
+                throw new Error(`Invalid ANSI code path: ${path}`);
             }
-            return {
-                label: key,
-                leaf: {
-                    code: typeof value === 'function' ? value.toString() : value
-                }
-            };
-        });
-    };
-    const topLevelNodes = data.map((item: any) => {
-        if (typeof item === 'object' && item !== null) {
-            return {
-                label: item,
-                nodes: processNestedObject(item)
-            };
+            code = code[part];
         }
-        return {
-            label: item,
-            leaf: {
-                code: typeof item === 'function' ? (item as unknown as string).toString() : item
-            }
-        };
-    });
-    return {
-        label: rootLabel,
-        nodes: topLevelNodes
-    };
-};
 
+        // Handle function codes (like 256.Fg, True.Fg, Cursor.Move.Up, etc.)
+        if (typeof code === 'function') {
+            throw new Error(`Path "${path}" points to a function. Call it with arguments first.`);
+        }
 
-const options = {
-    depth: null,
-    colors: true,
-    maxArrayLength: null,
-};
+        // Handle string codes
+        if (typeof code === 'string') {
+            return `${this.PRE}${code}${this.SUF}`;
+        }
 
-const ansi = createAnsiCodesTree(Codes);
+        throw new Error(`Path "${path}" does not point to a valid ANSI code`);
+    }
 
-//console.log(util.inspect(Codes, options));
+    // BASIC CODES
+    static readonly RESET = this.createAnsiSequence('Reset');
+    static readonly BOLD = this.createAnsiSequence('Bold');
+    static readonly DIM = this.createAnsiSequence('Dim');
+    static readonly ITALIC = this.createAnsiSequence('Italic');
+    static readonly UNDERLINE = this.createAnsiSequence('Underline');
+    static readonly DOUBLEUNDERLINE = this.createAnsiSequence('DoubleUnderline');
+    static readonly BLINK = this.createAnsiSequence('Blink');
+    static readonly INVERSE = this.createAnsiSequence('Inverse');
+    static readonly HIDDEN = this.createAnsiSequence('Hidden');
+    static readonly STRIKETHROUGH = this.createAnsiSequence('Strikethrough');
 
-//console.log(util.inspect(ansi, options));
+    // FOREGROUND
+    static readonly BLACK = this.createAnsiSequence('Black');
+    static readonly RED = this.createAnsiSequence('Red');
+    static readonly GREEN = this.createAnsiSequence('Green');
+    static readonly YELLOW = this.createAnsiSequence('Yellow');
+    static readonly BLUE = this.createAnsiSequence('Blue');
+    static readonly MAGENTA = this.createAnsiSequence('Magenta');
+    static readonly CYAN = this.createAnsiSequence('Cyan');
+    static readonly WHITE = this.createAnsiSequence('White');
+}
 
-console.log(Tree([ansi], "Ansi Escape Codes", "Codes", createAnsiCodesTree, true, false));
+const RESET = Ansi.RESET;
+const BOLD = Ansi.BOLD;
+const BLACK = Ansi.BLACK;
+const RED = Ansi.RED;
+const GREEN = Ansi.GREEN;
+const YELLOW = Ansi.YELLOW;
+const BLUE = Ansi.BLUE;
+const MAGENTA = Ansi.MAGENTA;
+const CYAN = Ansi.CYAN;
+const WHITE = Ansi.WHITE;
 
+export default Ansi;
+export {
+    RESET,
+    BOLD,
+    BLACK,
+    RED,
+    GREEN,
+    YELLOW,
+    BLUE,
+    MAGENTA,
+    CYAN,
+    WHITE
+}
+
+// TESTING
+// /**
+/////  * A custom tree data creation function for the 'Codes' object that preserves
+/////  * the structure needed for PrettyTree to apply colors.
+/////  * @param data The array of code objects.
+/////  * @param rootLabel The label for the root of the tree.
+/////  * @returns An ArchyNode object ready for rendering.
+/////  */
+// const createAnsiCodesTree = (data: any, rootLabel = 'Ansi Escape Codes') => {
+//     const processNestedObject = (obj: Object): any => {
+//         return Object.entries(obj).map(([key, value]) => {
+//             if (typeof value === 'object' && value !== null) {
+//                 return {
+//                     label: key,
+//                     nodes: processNestedObject(value)
+//                 };
+//             }
+//             return {
+//                 label: key,
+//                 leaf: {
+//                     code: typeof value === 'function' ? value.toString() : value
+//                 }
+//             };
+//         });
+//     };
+//     const topLevelNodes = data.map((item: any) => {
+//         if (typeof item === 'object' && item !== null) {
+//             return {
+//                 label: item,
+//                 nodes: processNestedObject(item)
+//             };
+//         }
+//         return {
+//             label: item,
+//             leaf: {
+//                 code: typeof item === 'function' ? (item as unknown as string).toString() : item
+//             }
+//         };
+//     });
+//     return {
+//         label: rootLabel,
+//         nodes: topLevelNodes
+//     };
+// };
+
+//import util from 'util';
+//import { Tree } from './PrettyTree.ts';
+
+//const options = {
+//    depth: null,
+//    colors: true,
+//    maxArrayLength: null,
+//};
+
+//console.log(util.inspect(Ansi, options));
+//console.log(Tree([Ansi], "Ansi Escape Codes", "Codes", createAnsiCodesTree, true, false));
+//console.log(Tree([Ansi], "Ansi Escape Codes", "Codes", undefined, true, false));
