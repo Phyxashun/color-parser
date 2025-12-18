@@ -1,4 +1,4 @@
-// src/DfaTokenizer.ts
+// src/Tokenizer.ts
 
 /* ============================================================
  * Token Types
@@ -132,11 +132,7 @@ const IS_DIGIT = /\d/;
 const IS_LETTER = /[a-zA-Z]/;
 const IS_WHITESPACE = /\s/;
 
-const classify = (ch: string | null | undefined): CharClass => {
-    if (ch === null || ch === undefined) {
-        return CharClass.Invalid;
-    }
-
+const classify = (ch: string): CharClass => {
     switch (ch) {
         case '': return CharClass.EOF;
         case '.': return CharClass.Dot;
@@ -190,6 +186,8 @@ const T: Record<State, Partial<Record<CharClass, State>>> = {
         [CharClass.Digit]: State.Integer,
         [CharClass.Dot]: State.Fraction,
         [CharClass.Letter]: State.Identifier,
+        [CharClass.Plus]: State.Sign,
+        [CharClass.Minus]: State.Sign,
     },
 
     [State.Whitespace]: {
@@ -216,18 +214,6 @@ const T: Record<State, Partial<Record<CharClass, State>>> = {
 
     [State.Percent]: {},
 
-    /*  HANDLING EXPONENTS
-        // Inside your main tokenizer loop, when you are in State.Integer or State.Fraction...
-        // And the next character's class is CharClass.Letter...
-
-        if (currentChar === 'e' || currentChar === 'E') {
-            // If the letter is 'e' or 'E', MANUALLY transition to the ExponentStart state
-            currentState = State.ExponentStart;
-        } else {
-            // For any other letter, use the DFA table's transition to Dimension
-            currentState = T[currentState][CharClass.Letter]; // This will go to State.Dimension
-        }
-    */
     [State.ExponentStart]: {
         [CharClass.Plus]: State.Exponent,
         [CharClass.Minus]: State.Exponent,
@@ -288,7 +274,7 @@ export default class Tokenizer {
 
     constructor(input: string) {
         this.source = input ?? '';
-        if (this.source.length > 0) this.tokenize();
+        this.tokenize();
     }
 
     // Public accessor method to the tokenized tokens
@@ -472,9 +458,11 @@ export default class Tokenizer {
                 // 3. Is the letter an 'e' or 'E'?
                 if (char === 'e' || char === 'E') {
                     // 4. It's an exponent
+                    this.consume();
                     return State.ExponentStart;
                 }
                 // 5. It's a dimension unit (e.g., 'deg' or 'rad')
+                this.consume();
                 return State.Dimension;
             }
         }

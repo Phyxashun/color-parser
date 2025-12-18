@@ -5,10 +5,11 @@
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
+    "@vitest/coverage-v8": "^4.0.16",
     "ts-node": "^10.9.2",
     "vitest": "^4.0.16"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5.9.3"
   }
 }
