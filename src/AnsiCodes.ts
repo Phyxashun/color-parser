@@ -1,74 +1,76 @@
+// src/AnsiCodes.ts
+
 /*
-ANSI escape codes for console logging are categorized into 
-Text Styles, Colors (Foreground and Background), and Cursor 
-Controls. In JavaScript, these sequences typically start 
-with the escape character \x1b[ (or \033[ in some 
-environments) and end with the letter m. 
+    ANSI escape codes for console logging are categorized into 
+    Text Styles, Colors (Foreground and Background), and Cursor 
+    Controls. In JavaScript, these sequences typically start 
+    with the escape character \x1b[ (or \033[ in some 
+    environments) and end with the letter m. 
 
-* 1. Text Styles. 
-These codes change the appearance of the text.
-    
-*           Style           Code        Reset Code
-*   ------------------------------------------------
-        Reset / Normal	     0              —
-        Bold	             1	            22
-        Dim / Faint	         2	            22
-        Italic	             3	            23
-        Underline	         4	            24
-        Double Underline	 21	            24
-        Blink	             5	            25
-        Inverse	             7	            27
-        Hidden	             8	            28
-        Strikethrough	     9	            29
-*   ------------------------------------------------
+    * 1. Text Styles. 
+    These codes change the appearance of the text.
+        
+    *           Style           Code        Reset Code
+    *   ------------------------------------------------
+            Reset / Normal	     0              —
+            Bold	             1	            22
+            Dim / Faint	         2	            22
+            Italic	             3	            23
+            Underline	         4	            24
+            Double Underline	 21	            24
+            Blink	             5	            25
+            Inverse	             7	            27
+            Hidden	             8	            28
+            Strikethrough	     9	            29
+    *   ------------------------------------------------
 
-* 2. Standard 16 Colors.
-These are divided into Normal and Bright/Bold versions. 
+    * 2. Standard 16 Colors.
+    These are divided into Normal and Bright/Bold versions. 
 
-*       Color	        Foreground  Background  Bright FG   Bright BG
-*   --------------------------------------------------------------------
-        Black	            30	        40	        90	        100
-        Red	                31	        41	        91	        101
-        Green	            32	        42	        92	        102
-        Yellow	            33	        43	        93	        103
-        Blue	            34	        44	        94	        104
-        Magenta	            35	        45	        95	        105
-        Cyan	            36	        46	        96	        106
-        White	            37	        47	        97	        107
-*   --------------------------------------------------------------------
+    *       Color	        Foreground  Background  Bright FG   Bright BG
+    *   --------------------------------------------------------------------
+            Black	            30	        40	        90	        100
+            Red	                31	        41	        91	        101
+            Green	            32	        42	        92	        102
+            Yellow	            33	        43	        93	        103
+            Blue	            34	        44	        94	        104
+            Magenta	            35	        45	        95	        105
+            Cyan	            36	        46	        96	        106
+            White	            37	        47	        97	        107
+    *   --------------------------------------------------------------------
 
-* 3. Extended Color Support.
-For modern terminals, you can use more than just the basic 16 colors. 
+    * 3. Extended Color Support.
+    For modern terminals, you can use more than just the basic 16 colors. 
 
-        256 Colors:         \x1b[38;5;{ID}m (Foreground) or 
-                            \x1b[48;5;{ID}m (Background), where ID is 0-255.
-        TrueColor (RGB):    \x1b[38;2;{r};{g};{b}m (Foreground) or 
-                            \x1b[48;2;{r};{g};{b}m (Background).
+            256 Colors:         \x1b[38;5;{ID}m (Foreground) or 
+                                \x1b[48;5;{ID}m (Background), where ID is 0-255.
+            TrueColor (RGB):    \x1b[38;2;{r};{g};{b}m (Foreground) or 
+                                \x1b[48;2;{r};{g};{b}m (Background).
 
-* 4. Cursor and Screen Control.
-These sequences manage the terminal display rather than just text style. 
+    * 4. Cursor and Screen Control.
+    These sequences manage the terminal display rather than just text style. 
 
-*           Action	                Code Sequence
-*   ------------------------------------------------
-        Clear Screen	                \x1b[2J
-        Clear Line	                    \x1b[2K
-        Move to Home (0,0)	            \x1b[H
-        Move Up n Lines	                \x1b[{n}A
-        Move Down n Lines	            \x1b[{n}B
-        Move Right n Columns	        \x1b[{n}C
-        Move Left n Columns	            \x1b[{n}D
-        Save Cursor Position	        \x1b[s
-        Restore Cursor Position	        \x1b[u
-*   ------------------------------------------------
+    *           Action	                Code Sequence
+    *   ------------------------------------------------
+            Clear Screen	                \x1b[2J
+            Clear Line	                    \x1b[2K
+            Move to Home (0,0)	            \x1b[H
+            Move Up n Lines	                \x1b[{n}A
+            Move Down n Lines	            \x1b[{n}B
+            Move Right n Columns	        \x1b[{n}C
+            Move Left n Columns	            \x1b[{n}D
+            Save Cursor Position	        \x1b[s
+            Restore Cursor Position	        \x1b[u
+    *   ------------------------------------------------
 
-* 5. Usage Tip.
-You can combine codes using semicolons. 
-For example, Bold Red on Yellow Background would be:
+    * 5. Usage Tip.
+    You can combine codes using semicolons. 
+    For example, Bold Red on Yellow Background would be:
 
-*   \x1b[1;31;43m Your Text \x1b[0m.
-*                 ---------
+    *   \x1b[1;31;43m Your Text \x1b[0m.
+    *                 ^^^^^^^^^
 */
-export class Ansi {
+export class AnsiCode {
     static Codes = {
         Pre: '\x1b[', // or octal: '\033['
         Suf: 'm',
@@ -165,11 +167,11 @@ export class Ansi {
     }
 
     static get PRE() {
-        return Ansi.Codes.Pre;
+        return AnsiCode.Codes.Pre;
     }
 
     static get SUF() {
-        return Ansi.Codes.Suf;
+        return AnsiCode.Codes.Suf;
     }
 
     static createAnsiSequence(path: string): string {
@@ -196,45 +198,55 @@ export class Ansi {
 
         throw new Error(`Path "${path}" does not point to a valid ANSI code`);
     }
-
-    // BASIC CODES
-    static readonly RESET = this.createAnsiSequence('Reset');
-    static readonly BOLD = this.createAnsiSequence('Bold');
-    static readonly DIM = this.createAnsiSequence('Dim');
-    static readonly ITALIC = this.createAnsiSequence('Italic');
-    static readonly UNDERLINE = this.createAnsiSequence('Underline');
-    static readonly DOUBLEUNDERLINE = this.createAnsiSequence('DoubleUnderline');
-    static readonly BLINK = this.createAnsiSequence('Blink');
-    static readonly INVERSE = this.createAnsiSequence('Inverse');
-    static readonly HIDDEN = this.createAnsiSequence('Hidden');
-    static readonly STRIKETHROUGH = this.createAnsiSequence('Strikethrough');
-
-    // FOREGROUND
-    static readonly BLACK = this.createAnsiSequence('Black');
-    static readonly RED = this.createAnsiSequence('Red');
-    static readonly GREEN = this.createAnsiSequence('Green');
-    static readonly YELLOW = this.createAnsiSequence('Yellow');
-    static readonly BLUE = this.createAnsiSequence('Blue');
-    static readonly MAGENTA = this.createAnsiSequence('Magenta');
-    static readonly CYAN = this.createAnsiSequence('Cyan');
-    static readonly WHITE = this.createAnsiSequence('White');
 }
 
-const RESET = Ansi.RESET;
-const BOLD = Ansi.BOLD;
-const BLACK = Ansi.BLACK;
-const RED = Ansi.RED;
-const GREEN = Ansi.GREEN;
-const YELLOW = Ansi.YELLOW;
-const BLUE = Ansi.BLUE;
-const MAGENTA = Ansi.MAGENTA;
-const CYAN = Ansi.CYAN;
-const WHITE = Ansi.WHITE;
+// BASIC CODES
+const RESET = AnsiCode.createAnsiSequence('Reset');
+const BOLD = AnsiCode.createAnsiSequence('Bold');
+const DIM = AnsiCode.createAnsiSequence('Dim');
+const ITALIC = AnsiCode.createAnsiSequence('Italic');
+const UNDERLINE = AnsiCode.createAnsiSequence('Underline');
+const DOUBLEUNDERLINE = AnsiCode.createAnsiSequence('DoubleUnderline');
+const BLINK = AnsiCode.createAnsiSequence('Blink');
+const INVERSE = AnsiCode.createAnsiSequence('Inverse');
+const HIDDEN = AnsiCode.createAnsiSequence('Hidden');
+const STRIKETHROUGH = AnsiCode.createAnsiSequence('Strikethrough');
 
-export default Ansi;
+// FOREGROUND
+const BLACK = AnsiCode.createAnsiSequence('Black');
+const RED = AnsiCode.createAnsiSequence('Red');
+const GREEN = AnsiCode.createAnsiSequence('Green');
+const YELLOW = AnsiCode.createAnsiSequence('Yellow');
+const BLUE = AnsiCode.createAnsiSequence('Blue');
+const MAGENTA = AnsiCode.createAnsiSequence('Magenta');
+const CYAN = AnsiCode.createAnsiSequence('Cyan');
+const WHITE = AnsiCode.createAnsiSequence('White');
+
+// BRIGHT FOREGROUND
+const BrBLACK = AnsiCode.createAnsiSequence('Br.Fg.Black');
+const BrRED = AnsiCode.createAnsiSequence('Br.Fg.Red');
+const BrGREEN = AnsiCode.createAnsiSequence('Br.Fg.Green');
+const BrYELLOW = AnsiCode.createAnsiSequence('Br.Fg.Yellow');
+const BrBLUE = AnsiCode.createAnsiSequence('Br.Fg.Blue');
+const BrMAGENTA = AnsiCode.createAnsiSequence('Br.Fg.Magenta');
+const BrCYAN = AnsiCode.createAnsiSequence('Br.Fg.Cyan');
+const BrWHITE = AnsiCode.createAnsiSequence('Br.Fg.White');
+
+export default AnsiCode;
 export {
+    // BASIC CODES
     RESET,
     BOLD,
+    DIM,
+    ITALIC,
+    UNDERLINE,
+    DOUBLEUNDERLINE,
+    BLINK,
+    INVERSE,
+    HIDDEN,
+    STRIKETHROUGH,
+
+    // FOREGROUND
     BLACK,
     RED,
     GREEN,
@@ -242,7 +254,17 @@ export {
     BLUE,
     MAGENTA,
     CYAN,
-    WHITE
+    WHITE,
+
+    // BRIGHT FOREGROUND
+    BrBLACK,
+    BrRED,
+    BrGREEN,
+    BrYELLOW,
+    BrBLUE,
+    BrMAGENTA,
+    BrCYAN,
+    BrWHITE,
 }
 
 // TESTING
@@ -302,3 +324,6 @@ export {
 //console.log(util.inspect(Ansi, options));
 //console.log(Tree([Ansi], "Ansi Escape Codes", "Codes", createAnsiCodesTree, true, false));
 //console.log(Tree([Ansi], "Ansi Escape Codes", "Codes", undefined, true, false));
+
+
+

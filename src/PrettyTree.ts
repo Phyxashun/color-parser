@@ -1,3 +1,5 @@
+// src/PrettyTree.ts
+
 import archy from 'archy';
 import Chalk from 'chalk';
 
@@ -170,11 +172,8 @@ class PrettyTree {
     }
 }
 
-const Tree = PrettyTree.tree;
-const CreateTreeData = PrettyTree.createTreeData;
+export default PrettyTree;
+export const Tree = PrettyTree.tree;
+export const CreateTreeData = PrettyTree.createTreeData;
 
-export {
-    PrettyTree,
-    Tree,
-    CreateTreeData
-}
+
