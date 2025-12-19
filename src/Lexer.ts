@@ -403,7 +403,9 @@ export default class Tokenizer {
                         this.index++;
                         this.currentState = State.Error;
                         const msg = `Skipped unexpected character at ${this.index}: '${value}'`;
-                        this.displayError(this.currentState, msg, startPos.index, endPos.index, value);
+                        //this.displayError(this.currentState, msg, startPos.index, endPos.index, value);
+                        this.errorCount++;
+                        tokens.push({ type: TokenType.ERROR, value });
                         continue;
                     }
                     break;
@@ -423,7 +425,9 @@ export default class Tokenizer {
                         break;
                     } else {
                         this.currentState = State.Error;
-                        this.displayError(this.currentState, undefined, startPos.index, endPos.index, value);
+                        //this.displayError(this.currentState, undefined, startPos.index, endPos.index, value);
+                        this.errorCount++;
+                        tokens.push({ type: TokenType.ERROR, value });
                         continue;
                     }
 
@@ -442,11 +446,13 @@ export default class Tokenizer {
 
                 // INVALID TOKEN
                 case State.Error:
-                    this.displayError(this.currentState, undefined, startPos.index, endPos.index, value);
-                    //type = Accepting[this.currentState]!;
+                    //this.displayError(this.currentState, undefined, startPos.index, endPos.index, value);
+                    this.errorCount++;
                     tokens.push({ type: TokenType.ERROR, value });
                     break;
                 default:
+                    type = Accepting[this.currentState]!;
+                    tokens.push({ type, value });
                     break;
             }
         }
@@ -578,55 +584,107 @@ export default class Tokenizer {
         };
     }
 
-    public displayTree() {
-        const title = 'TOKENIZING STRING INPUT';
-        const titleLength = title.length;
-        const inputLength = this.source.length;
-        const inputPadding = 16;
-        const bar = '═'.repeat(inputLength + inputPadding);
-        const lTitlePadding = (bar.length - titleLength) / 2;
-        const remainder = lTitlePadding % 2;
-        const rTitlePadding = (remainder === 0) ? lTitlePadding : lTitlePadding + remainder;
-        const longBar = '█'.repeat(inputLength + inputPadding)
-        const lTitle = '█'.repeat(lTitlePadding);
-        const rTitle = '█'.repeat(rTitlePadding);
-        const input = `${BrGREEN}'${YELLOW}${this.source}${BrGREEN}'${RESET}`;
-
-        console.log(`${bar}`);
-        console.log(`${longBar}`);
-        console.log(`${lTitle}${CYAN}${title}${RESET}${rTitle}`);
-        console.log(`${longBar}`);
-        console.log(`${bar}`);
-
-        console.log(`${BrGREEN}Input String:\n\n\t${input}${RESET}\n`);
-        console.log(`${bar}`);
-
-        console.log(`${BrGREEN}Input Length:\n\n\t${YELLOW}${inputLength}${RESET}\n`);
-        console.log(`${bar}\n`);
-
-        const options = {
-            depth: null,
-            colors: true,
-            maxArrayLength: null,
-        };
-        console.log(Tree(this.tokens, 'Token Tree', 'Token', this.createTokenTree));
-        console.log(`${bar}\n`);
-
-        this.complete(bar.length);
+    private splitString(str: string, maxLength?: number): string[] {
+        maxLength = maxLength ?? 50;
+        if (str.length <= maxLength) return [str];
+        const midpoint = Math.ceil(str.length / 2);
+        if (midpoint > 45) return [str];
+        const first = str.substring(0, midpoint);
+        const second = str.substring(midpoint);
+        return [first, second];
     }
 
-    private complete(length: number) {
+    public displayTree() {
         // TITLE AND COLORS
-        const title = 'COMPLETED TOKENIZATION!!!'
+        const title = ' TOKENIZING STRING INPUT ';
+        const titleColor = CYAN;
+        const barColor = WHITE;
+        const headingColor = BrGREEN;
+        const arrowColor = MAGENTA + BOLD;
+        const dataColor = YELLOW + BOLD;
+
+        // CALCULATE LENGTHS
+        const maxLength = 100;
+        const maxSourceLength = maxLength / 2;
+        const [first, second] = this.splitString(this.source, maxSourceLength);
+
+        // CALCULATE PADDING
+        let rTitlePadding = Math.ceil((maxLength - title.length) / 2);
+        const remainder = rTitlePadding % 2;
+        const lTitlePadding = (remainder === 0) ? rTitlePadding : rTitlePadding + remainder;
+        const totalTitleLength = lTitlePadding + title.length + rTitlePadding;
+        if (totalTitleLength > maxLength) {
+            const targetLength = totalTitleLength - maxLength;
+            rTitlePadding -= targetLength;
+        }
+
+        // SMALL PIECES
+        const tabs = `\t\t`;
+        const rightArrow = `${arrowColor}►\t\t${RESET}`;
+        const leftArrow = `${arrowColor}\t\t◄${RESET}`;
+        const bar = '═'.repeat(maxLength);
+        const longBar = '█'.repeat(maxLength)
+        const leftTitle = '█'.repeat(lTitlePadding);
+        const rightTitle = '█'.repeat(rTitlePadding);
+        const centerTitle = `${titleColor}${title}${RESET}`;
+        const sourceStringHeading = `${headingColor}${BOLD}Input String:${RESET}`;
+        const sourceStringFirst = `${dataColor}${first}${RESET}`;
+        const sourceStringSecond = second ? `${dataColor}${second}${RESET}` : '';
+        const sourceLengthHeading = `${headingColor}${BOLD}Input Length:${RESET}`;
+        const sourceLength = `${dataColor}${this.source.length}${RESET}`;
+
+        // PUTTING PIECES TOGETHER
+        const barRow = `${barColor}${bar}${RESET}`;
+        const longBarRow = `${barColor}${longBar}${RESET}`;
+        const titleRow = `${leftTitle}${centerTitle}${rightTitle}`;
+        const sourceStringHeadingRow = `${sourceStringHeading}\n`;
+        const sourceStringFirstRow = `${tabs}${rightArrow}${sourceStringFirst}${leftArrow}`;
+        const sourceStringSecondRow = second ? `${tabs}${rightArrow}${sourceStringSecond}${leftArrow}` : '';
+        const sourceLengthHeadingRow = `${sourceLengthHeading}\n`;
+        const sourceLengthRow = `${tabs}${sourceLength}`;
+        const treeRow = Tree(this.tokens, 'Token Tree', 'Token', this.createTokenTree);
+
+        // DISPLAY REPORT
+        console.log(`\n${barRow}`);
+        console.log(`${longBarRow}`);
+        console.log(`${titleRow}`);
+        console.log(`${longBarRow}`);
+        console.log(`${barRow}`);
+        console.log(`${headingColor}${BOLD}Error Count:${RESET}\t`, this.errorCount);
+        console.log(`${sourceStringHeadingRow}`);
+        console.log(`${sourceStringFirstRow}`);
+        if (second) console.log(`${sourceStringSecondRow}\n`);
+        if (!second) console.log();
+        console.log(`${barRow}`);
+        console.log(`${sourceLengthHeadingRow}`);
+        console.log(`${sourceLengthRow}\n`);
+        console.log(`${barRow}\n`);
+        console.log(`${treeRow}`);
+        console.log(`${barRow}`);
+
+        // DISPLAY COMPLETED BANNER
+        this.displayBanner(maxLength, ' COMPLETED TOKENIZATION!!! ');
+    }
+
+    private displayBanner(maxLength: number, title?: string) {
+        // TITLE AND COLORS
+        title = title ?? '';
         const titleColor = YELLOW;
         const frameColor = GREEN;
 
         // CALCULATE LENGTHS
-        const titleLength = title.length;
-        const barLength = length - 2;
-        const lTitlePadding = (barLength - titleLength) / 2
-        const remainder = lTitlePadding % 2;
-        const rTitlePadding = (remainder === 0) ? lTitlePadding : lTitlePadding + remainder;
+        const framePieceLength = 2;
+        const barLength = maxLength - framePieceLength;
+
+        // CALCULATE PADDING
+        let rTitlePadding = Math.ceil((maxLength - title.length) / 2);
+        const remainder = rTitlePadding % 2;
+        const lTitlePadding = (remainder === 0) ? rTitlePadding : rTitlePadding + remainder;
+        const totalTitleLength = lTitlePadding + title.length + rTitlePadding + framePieceLength;
+        if (totalTitleLength > maxLength) {
+            const targetLength = totalTitleLength - maxLength;
+            rTitlePadding -= targetLength;
+        }
 
         // OUTER PIECES
         const tlc = `${frameColor}╔${RESET}`;
