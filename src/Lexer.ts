@@ -4,6 +4,7 @@ import util from 'util';
 import { Tree } from './PrettyTree.ts';
 import { RESET, RED, YELLOW, GREEN, BLUE, BOLD, MAGENTA, WHITE, UNDERLINE, BrMAGENTA } from './AnsiCodes.ts';
 import TokenReport from './TokenReport.ts';
+import Banner from './Banner.ts';
 
 /**
  * Deterministic Finite Automaton
@@ -237,6 +238,7 @@ export const Transition: TransitionType = {
         [CharClass.Slash]: State.InsideQuote,
         [CharClass.Unicode]: State.InsideQuote,
         [CharClass.Operator]: State.InsideQuote,
+        //[CharClass.Quote]: State.InsideQuote, <-- Do i need a new CharClass for characters inside a nested string literal?
         [CharClass.Quote]: State.EndQuote,
     },
 
@@ -287,10 +289,10 @@ export const Transition: TransitionType = {
     },
 
     [State.Float]: {
-        [CharClass.Exponent]: State.Float,
+        [CharClass.Digit]: State.Float,
+        [CharClass.Exponent]: State.AfterExponent,
         [CharClass.Percent]: State.Percent,
         [CharClass.Letter]: State.Dimension,
-        [CharClass.Digit]: State.Float,
     },
 
     [State.Percent]: {
@@ -351,7 +353,10 @@ export default class Tokenizer {
     private column = 1;
     private currentState: State = State.Start;
     private previousState: State = State.Start;
+    private currentCharClass: CharClass | undefined = undefined;
+    private previousCharClass: CharClass | undefined = undefined;
     private errorCount: number = 0;
+    private quoteChar: string | undefined = undefined;
     private tokenReport: TokenReport | undefined = undefined;
     private readonly tokens: Token[] = [];
 
@@ -393,26 +398,43 @@ export default class Tokenizer {
         while (!this.isEOF()) {
             let type: TokenType;
             let value: string = '';
-            this.currentState = State.Start;
-
+            this.previousCharClass = this.currentCharClass;
+            this.reset();
             const startPos: Position = this.position();
-            while (true) {
-                if (this.isEOF()) break;
 
+
+
+            while (true) {
                 const char = this.source[this.index];
                 if (!char) break;
 
-                const charClass = classify(char);
-                if (!charClass) {
-                    this.reject(this.currentState, undefined, startPos, value);
+                this.currentCharClass = classify(char);
+                if (!this.currentCharClass) {
+                    this.reject(undefined, startPos, value);
                     break;
                 }
 
-                const nextState = this.transition(Transition, this.currentState, charClass);
-                if (!nextState) {
-                    //this.reject(this.currentState, charClass, startPos, value);
-                    break;
+                if (this.currentState === State.Start && this.currentCharClass === CharClass.Quote) {
+                    this.quoteChar = char;
                 }
+
+                if (
+                    this.currentState === State.InsideQuote &&
+                    this.currentCharClass === CharClass.Quote
+                ) {
+                    if (this.quoteChar && this.isMatchingQuote(this.quoteChar, char)) {
+                        this.currentState = State.EndQuote;
+                        this.advance();
+                        break;
+                    }
+
+                    // Different quote → literal content
+                    this.advance();
+                    continue;
+                }
+
+                const nextState = this.transition(Transition, this.currentState, this.currentCharClass);
+                if (!nextState) break;
 
                 this.currentState = nextState;
                 this.advance();
@@ -427,11 +449,8 @@ export default class Tokenizer {
                 case State.Start:
                     if (!this.isEOF()) {
                         this.advance();
-                        this.currentState = State.Error;
                         const msg = `Skipped unexpected character at ${this.index}: '${value}'`;
-                        //this.displayError(this.currentState, msg, startPos.index, endPos.index, value);
-                        this.errorCount++;
-                        this.tokens.push({ type: TokenType.ERROR, value });
+                        this.reject(msg, startPos, value);
                         continue;
                     }
                     break;
@@ -448,11 +467,25 @@ export default class Tokenizer {
                         /^[0-9a-f]+$/i.test(hexValue)) {
                         type = Accepting[this.currentState]!;
                         this.tokens.push({ type, value });
+                        this.reset();
                     } else {
-                        this.currentState = State.Error;
-                        //this.displayError(this.currentState, undefined, startPos.index, endPos.index, value);
-                        this.errorCount++;
-                        this.tokens.push({ type: TokenType.ERROR, value });
+                        const pState = `${BLUE}${this.previousState}${MAGENTA}`;
+                        const sPos = `${YELLOW}${startPos.index}${RESET}`;
+                        const msg = `Invalid ${pState} at position: ${sPos}`
+                        this.reject(msg, startPos, value);
+                    }
+                    break;
+
+                case State.InsideQuote:
+                    if (this.isEOF()) {
+                        this.reject(undefined, startPos, value);
+                        break;
+                    }
+                    break;
+
+                case State.AfterExponent:
+                    if (!Accepting[State.AfterExponent]) {
+                        this.reject(undefined, startPos, value);
                     }
                     break;
 
@@ -468,13 +501,12 @@ export default class Tokenizer {
                 case State.Dimension:
                     type = Accepting[this.currentState]!;
                     this.tokens.push({ type, value });
+                    this.reset();
                     break;
 
                 // INVALID TOKEN
                 case State.Error:
-                    //this.displayError(this.currentState, undefined, startPos.index, endPos.index, value);
-                    this.errorCount++;
-                    this.tokens.push({ type: TokenType.ERROR, value });
+                    this.reject(undefined, startPos, value);
                     break;
                 default:
                     type = Accepting[this.currentState]!;
@@ -489,6 +521,27 @@ export default class Tokenizer {
 
     private isEOF = () => {
         return this.index >= this.source.length;
+    }
+
+    private isMatchingQuote(open: string, close: string): boolean {
+        if (open === close) return true;
+
+        // Unicode paired quotes
+        const pairs: Record<string, string> = {
+            '“': '”',
+            '‘': '’',
+            '‹': '›',
+            '«': '»',
+        };
+
+        return pairs[open] === close;
+    }
+
+    private reset(): void {
+        this.currentState = State.Start;
+        this.previousState = State.Start;
+        this.currentCharClass = undefined;
+        this.quoteChar = undefined;
     }
 
     private advance(): void {
@@ -518,18 +571,29 @@ export default class Tokenizer {
     }
 
     private reject(
-        state: State,
-        charClass: CharClass | undefined,
+        customMsg: string = '',
         startPos: Position,
         value?: any
     ) {
         this.currentState = State.Error;
+        this.errorCount++;
 
-        const msg = `Invalid token at position: ${YELLOW}${startPos.index}${MAGENTA} — no transition from ${BLUE}${state}${MAGENTA} to:\n\n\t\t\t\t${GREEN}VALUE: ${RED}'${value}'\t${GREEN}CHARACTER CLASS: ${RED}'${charClass}'${RESET}`;
+        const sPos = `${YELLOW}${startPos.index}${RESET}`;
+        const cState = `${BLUE}${this.previousState}${RESET}`;
+        const space = `\n\n\t\t\t\t`;
+        const cValue = `${GREEN}VALUE: ${RED}'${value}'${RESET}\t`;
+        const cClass = `${GREEN}CHARACTER CLASS: ${RED}'${this.currentCharClass}'${RESET}`;
+
+        const msgPart1 = `${MAGENTA}${customMsg}${RESET}` || `${MAGENTA}Invalid token at position: ${sPos}${RESET}`;
+        const msgPart2 = `${MAGENTA} — no transition from ${cState} ${MAGENTA}to:${space}${cValue}${cClass}${RESET}`;
+
+        const msg = `${msgPart1}${msgPart2}`;
 
         const endPos = startPos.index + (value.length ?? 1);
 
         if (value === ' ') value = '<whitespace>';
+
+        this.tokens.push({ type: TokenType.ERROR, value });
 
         this.displayError(
             this.currentState,
@@ -550,7 +614,7 @@ export default class Tokenizer {
      * @returns - void
      */
     private displayError(
-        state: State,
+        currentState: State,
         errorMsg?: string,
         startPos?: number,
         endPos?: number,
@@ -559,6 +623,17 @@ export default class Tokenizer {
         if (!this.debug) return;
         let errorDetails;
         const message = errorMsg || 'Lexer Error!!!';
+
+        // Color Common Error Details
+        const cPrev_StateRow = `${BLUE}${this.previousState}${RESET}`;
+        const cCurr_StateRow = `${RED}${BOLD}${currentState}${RESET}`;
+        const cPrev_ClassRow = `${BLUE}${this.previousCharClass}${RESET}`;
+        const cCurr_ClassRow = `${RED}${BOLD}${this.currentCharClass}${RESET}`;
+        const rowSpace = `\t`;
+        const cStateRow = `${RESET}Previous: ${cPrev_StateRow}${rowSpace}Current: ${cCurr_StateRow}\n`;
+        const cCharClassRow = `${RESET}Previous: ${cPrev_ClassRow}${rowSpace}\tCurrent: ${cCurr_ClassRow}\n`;
+        const cErrMessageRow = `${MAGENTA}${BOLD}${message}${RESET}\n`;
+
         if (startPos !== undefined && endPos !== undefined && value !== undefined) {
             // A single character was identified as the error
             if (startPos === endPos) endPos++;
@@ -570,29 +645,33 @@ export default class Tokenizer {
             const cPrefix = `${WHITE}${prefix}${RESET}`;
             const cTarget = `${BrMAGENTA}${BOLD}${UNDERLINE}${target}${RESET}`;
             const cSuffix = `${WHITE}${suffix}${RESET}`
-            const cSource = `${cPrefix}${cTarget}${cSuffix}`;
+            const cSourceRow = `${cPrefix}${cTarget}${cSuffix}`;
 
             // Create an empty line with an arrow pointing at the error
             const pL = ' '.repeat(prefix.length);
             const tL = '▲'.repeat(target.length);
-            const arrow = `${RESET}${pL}${RED}${BOLD}${tL}${RESET}`;
+            const cArrowRow = `${RESET}${pL}${RED}${BOLD}${tL}${RESET}\n`;
+
+            // Color Error Details
+            const cStartPosRow = `${YELLOW}${startPos}${RESET}`;
+            const cEndPosRow = `${YELLOW}${endPos}${RESET}`;
+            const cPosRow = `${RESET}Start: ${cStartPosRow}${rowSpace}End: ${cEndPosRow}`
 
             // Develop error details
             errorDetails = [{
-                PreviousState: this.previousState,
-                CurrentState: `${RED}${BOLD}${state}${RESET}`,
-                Error: `${MAGENTA}${BOLD}${message}${RESET}`,
-                Token: value,
-                Source: cSource,
-                '': arrow,
-                StartPosition: `${YELLOW}${startPos}${RESET}`,
-                EndPosition: `${YELLOW}${endPos}${RESET}`,
+                State: cStateRow,
+                CharacterClass: cCharClassRow,
+                Error: cErrMessageRow,
+                Source: cSourceRow,
+                '▲-line': cArrowRow,
+                Position: cPosRow,
             }];
         } else {
+            // Develop error details
             errorDetails = [{
-                PreviousState: this.previousState,
-                CurrentState: `${RED}${BOLD}${state}${RESET}`,
-                Error: `${MAGENTA}${BOLD}${message}${RESET}`,
+                State: cStateRow,
+                CharacterClass: cCharClassRow,
+                Error: cErrMessageRow,
             }];
         }
         console.log();
@@ -604,7 +683,7 @@ export default class Tokenizer {
 (() => {
     // EXAMPLE:
     const debug = true;
-    const input = 'price + 4.99 * 100! - (3 * 50%) / 1e58 #ffff "test string 123 `#$%`" @ “Roses are Red!”';
+    const input = 'price + 4.99 * 100! - (3 * 50%) / 1e58 #ff "test string 123 `#$%`" @ “Roses are Red!”';
 
     const tokenizer: Tokenizer = new Tokenizer(input, debug);
 
