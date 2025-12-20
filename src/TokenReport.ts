@@ -1,16 +1,7 @@
-import { BOLD, BrGREEN, CYAN, MAGENTA, RESET, WHITE, YELLOW } from './AnsiCodes.ts';
+import { BOLD, BrGREEN, CYAN, MAGENTA, RED, RESET, WHITE, YELLOW } from './AnsiCodes.ts';
 import Banner from './Banner';
 import type { Token } from './Lexer.ts'
-import PrettyTree, { Tree } from './PrettyTree.ts';
-
-/*
-    NEED:
-
-        this.source
-        this.tokens
-        this.errorCount
-
-*/
+import { Tree } from './PrettyTree.ts';
 
 export default class TokenReport {
     private readonly maxLength: number;
@@ -26,6 +17,7 @@ export default class TokenReport {
     private headingColor: string = BrGREEN;
     private arrowColor: string = MAGENTA + BOLD;
     private dataColor: string = YELLOW + BOLD;
+    private errorColor: string = RED + BOLD;
 
     // Small Pieces
     private tabs: string = `\t\t`;
@@ -45,6 +37,8 @@ export default class TokenReport {
     private leftTitle: string = '';
     private rightTitle: string = '';
     private centerTitle: string = '';
+    private errorHeading: string = '';
+    private errorRedCount: string = '';
     private sourceStringHeading = '';
     private sourceStringFirst = '';
     private sourceStringSecond = '';
@@ -55,6 +49,7 @@ export default class TokenReport {
     private barRow = '';
     private longBarRow = '';
     private titleRow = '';
+    private errorRow = '';
     private sourceStringHeadingRow = '';
     private sourceStringFirstRow = '';
     private sourceStringSecondRow = '';
@@ -101,7 +96,10 @@ export default class TokenReport {
         this.longBar = '█'.repeat(this.maxLength)
         this.leftTitle = '█'.repeat(this.lTitlePadding);
         this.rightTitle = '█'.repeat(this.rTitlePadding);
+
         this.centerTitle = `${this.titleColor}${this.title}${RESET}`;
+        this.errorHeading = `${this.headingColor}Error Count:\t${RESET}`;
+        this.errorRedCount = `${this.errorColor}${this.errorCount}${RESET}`;
         this.sourceStringHeading = `${this.headingColor}${BOLD}Input String:${RESET}`;
         this.sourceStringFirst = `${this.dataColor}${this.first}${RESET}`;
         this.sourceStringSecond = this.second ? `${this.dataColor}${this.second}${RESET}` : '';
@@ -112,11 +110,13 @@ export default class TokenReport {
         this.barRow = `${this.barColor}${this.bar}${RESET}`;
         this.longBarRow = `${this.barColor}${this.longBar}${RESET}`;
         this.titleRow = `${this.leftTitle}${this.centerTitle}${this.rightTitle}`;
+        this.errorRow = `${this.errorHeading}${this.errorRedCount}`;
         this.sourceStringHeadingRow = `${this.sourceStringHeading}\n`;
         this.sourceStringFirstRow = `${this.tabs}${this.rightArrow}${this.sourceStringFirst}${this.leftArrow}`;
         this.sourceStringSecondRow = this.second ? `${this.tabs}${this.rightArrow}${this.sourceStringSecond}${this.leftArrow}` : '';
         this.sourceLengthHeadingRow = `${this.sourceLengthHeading}\n`;
         this.sourceLengthRow = `${this.tabs}${this.sourceLength}`;
+
         this.treeRow = Tree(this.tokens, 'Token Tree', 'Token', this.createTokenTree);
         this.banner = new Banner(this.maxLength, ' COMPLETED TOKENIZATION!!! ');
     }
@@ -147,11 +147,10 @@ export default class TokenReport {
         console.log(`${this.titleRow}`);
         console.log(`${this.longBarRow}`);
         console.log(`${this.barRow}`);
-        console.log(`${this.headingColor}${BOLD}Error Count:${RESET}\t`, this.errorCount);
+        console.log(`${this.errorRow}`);
         console.log(`${this.sourceStringHeadingRow}`);
         console.log(`${this.sourceStringFirstRow}`);
-        if (this.second) console.log(`${this.sourceStringSecondRow}\n`);
-        if (!this.second) console.log();
+        console.log((this.second) ? `${this.sourceStringSecondRow}\n` : `\n`);
         console.log(`${this.barRow}`);
         console.log(`${this.sourceLengthHeadingRow}`);
         console.log(`${this.sourceLengthRow}\n`);
