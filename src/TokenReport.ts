@@ -34,6 +34,8 @@ export default class TokenReport {
     // Larger Report Pieces
     private bar: string = '';
     private longBar: string = '';
+    private lTitle: string = '';
+    private rTitle: string = '';
     private leftTitle: string = '';
     private rightTitle: string = '';
     private centerTitle: string = '';
@@ -94,15 +96,20 @@ export default class TokenReport {
         // Larger Report Pieces
         this.bar = '═'.repeat(this.maxLength);
         this.longBar = '█'.repeat(this.maxLength)
-        this.leftTitle = '█'.repeat(this.lTitlePadding);
-        this.rightTitle = '█'.repeat(this.rTitlePadding);
+        this.lTitle = '█'.repeat(this.lTitlePadding);
+        this.rTitle = '█'.repeat(this.rTitlePadding);
 
+        this.leftTitle = `${this.barColor}${this.lTitle}${RESET}`;
+        this.rightTitle = `${this.barColor}${this.rTitle}${RESET}`;
         this.centerTitle = `${this.titleColor}${this.title}${RESET}`;
+
         this.errorHeading = `${this.headingColor}Error Count:\t${RESET}`;
         this.errorRedCount = `${this.errorColor}${this.errorCount}${RESET}`;
+
         this.sourceStringHeading = `${this.headingColor}${BOLD}Input String:${RESET}`;
         this.sourceStringFirst = `${this.dataColor}${this.first}${RESET}`;
         this.sourceStringSecond = this.second ? `${this.dataColor}${this.second}${RESET}` : '';
+
         this.sourceLengthHeading = `${this.headingColor}${BOLD}Input Length:${RESET}`;
         this.sourceLength = `${this.dataColor}${this.source.length}${RESET}`;
 

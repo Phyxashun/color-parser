@@ -1,5 +1,6 @@
 // src/Lexer.ts
 
+import util from 'util';
 import { Tree } from './PrettyTree.ts';
 import { RESET, RED, YELLOW, GREEN, BLUE, BOLD, MAGENTA, WHITE, UNDERLINE, BrMAGENTA } from './AnsiCodes.ts';
 import TokenReport from './TokenReport.ts';
@@ -36,6 +37,7 @@ export type StateType<T extends string> = { [K in T]: `<${Lowercase<K>}>`; }; //
 export type CharClassType = [CharClass, CharClassFn][] // SigmaType
 export type TransitionType = Record<State, Partial<Record<CharClass, State>>>; // DeltaType
 export type AcceptingType = Partial<Record<State, TokenType>>; // Ftype
+export type ClassifyFunction = (char: string) => CharClass;
 
 // Terminals used in accepting states
 export const TokenType = {
@@ -156,20 +158,11 @@ export const CharSpec: CharClassType = [
     [CharClass.Unicode, (char: string) => /[^\x00-\x7F]/.test(char)],
 ];
 
-export type ClassifyFunction = (char: string) => CharClass;
-
-export const charLookup = new Map<string, CharClass>();
-
 export const classify: ClassifyFunction = (char: string): CharClass => {
     for (const [charClass, charClassFn] of CharSpec) {
         if (charClassFn(char)) return charClass as CharClass;
     }
     return CharClass.Other;
-}
-
-for (let i = 0; i < 256; i++) {
-    const char = String.fromCharCode(i);
-    charLookup.set(char, classify(char));
 }
 // End of Σ (Sigma)
 
@@ -184,6 +177,8 @@ export const State = {
     Integer: '<integer>',
     Float: '<float>',
     Exponent: '<exponent>',
+    ExponentSign: '<exponent-sign>',
+    AfterExponent: '<after-exponent>',
     Delimiter: '<delimiter>',
     Operator: '<operator>',
     Error: '<error>',
@@ -222,8 +217,8 @@ export const Transition: TransitionType = {
 
     [State.HexValue]: {
         [CharClass.Hex]: State.HexValue,
-        [CharClass.Exponent]: State.HexValue,
-        [CharClass.Letter]: State.HexValue,
+        [CharClass.Exponent]: State.HexValue,  // ⚠️ Why e/E in hex?
+        [CharClass.Letter]: State.HexValue,    // ⚠️ All letters?
         [CharClass.Digit]: State.HexValue,
     },
 
@@ -270,12 +265,25 @@ export const Transition: TransitionType = {
     },
 
     [State.Integer]: {
-        [CharClass.Operator]: State.Integer,
-        [CharClass.Exponent]: State.Integer,
+        [CharClass.Digit]: State.Integer,
         [CharClass.Dot]: State.Float,
+        [CharClass.Exponent]: State.AfterExponent,
         [CharClass.Percent]: State.Percent,
         [CharClass.Letter]: State.Dimension,
-        [CharClass.Digit]: State.Integer,
+    },
+
+    [State.AfterExponent]: {
+        [CharClass.Plus]: State.ExponentSign,
+        [CharClass.Minus]: State.ExponentSign,
+        [CharClass.Digit]: State.Exponent,
+    },
+
+    [State.ExponentSign]: {
+        [CharClass.Digit]: State.Exponent,
+    },
+
+    [State.Exponent]: {
+        [CharClass.Digit]: State.Exponent,
     },
 
     [State.Float]: {
@@ -283,11 +291,6 @@ export const Transition: TransitionType = {
         [CharClass.Percent]: State.Percent,
         [CharClass.Letter]: State.Dimension,
         [CharClass.Digit]: State.Float,
-    },
-
-    [State.Exponent]: {
-        [CharClass.Letter]: State.Identifier,
-        [CharClass.Digit]: State.Exponent,
     },
 
     [State.Percent]: {
@@ -356,17 +359,33 @@ export default class Tokenizer {
         this.source = input ?? '';
         this.debug = debug ?? false;
 
+        const options = {
+            depth: null,
+            colors: true,
+            maxArrayLength: null,
+        };
+
         const done = this.tokenize();
         if (done) {
-            this.tokenReport =
-                new TokenReport(
-                    100,
-                    ' Tokenization Report ',
-                    this.source,
-                    this.tokens,
-                    this.errorCount
-                );
-            this.tokenReport.show();
+            // LONG REPORT
+            //this.tokenReport =
+            //    new TokenReport(
+            //        100,
+            //        ' TOKENIZATION REPORT ',
+            //        this.source,
+            //        this.tokens,
+            //        this.errorCount
+            //    );
+            //this.tokenReport.show();
+
+            // SHORT REPORT
+            console.log();
+            console.log(util.inspect({
+                title: ' TOKENIZATION REPORT ',
+                source: this.source,
+                errors: this.errorCount,
+                tokens: this.tokens,
+            }, options));
         }
     }
 
@@ -390,15 +409,13 @@ export default class Tokenizer {
                 }
 
                 const nextState = this.transition(Transition, this.currentState, charClass);
-                if (nextState === null) {
-                    this.reject(this.currentState, charClass, startPos, value);
-                    break;
-                } else if (nextState === undefined) {
+                if (!nextState) {
+                    //this.reject(this.currentState, charClass, startPos, value);
                     break;
                 }
 
                 this.currentState = nextState;
-                this.index++;
+                this.advance();
             }
             const endPos: Position = this.position();
 
@@ -409,7 +426,7 @@ export default class Tokenizer {
 
                 case State.Start:
                     if (!this.isEOF()) {
-                        this.index++;
+                        this.advance();
                         this.currentState = State.Error;
                         const msg = `Skipped unexpected character at ${this.index}: '${value}'`;
                         //this.displayError(this.currentState, msg, startPos.index, endPos.index, value);
@@ -424,21 +441,20 @@ export default class Tokenizer {
                     continue;
 
                 case State.HexValue:
-                    const match = value.match(hexRegex);
-                    if (match) {
+                    const hexValue = value.slice(1); // Remove #
+                    const validLengths = [3, 4, 6, 8];
+
+                    if (validLengths.includes(hexValue.length) &&
+                        /^[0-9a-f]+$/i.test(hexValue)) {
                         type = Accepting[this.currentState]!;
-                        this.tokens.push({
-                            type,
-                            value: match[0],
-                        });
-                        break;
+                        this.tokens.push({ type, value });
                     } else {
                         this.currentState = State.Error;
                         //this.displayError(this.currentState, undefined, startPos.index, endPos.index, value);
                         this.errorCount++;
                         this.tokens.push({ type: TokenType.ERROR, value });
-                        continue;
                     }
+                    break;
 
                 case State.Unicode:
                 case State.EndQuote:
@@ -449,6 +465,7 @@ export default class Tokenizer {
                 case State.Float:
                 case State.Percent:
                 case State.Exponent:
+                case State.Dimension:
                     type = Accepting[this.currentState]!;
                     this.tokens.push({ type, value });
                     break;
@@ -474,6 +491,19 @@ export default class Tokenizer {
         return this.index >= this.source.length;
     }
 
+    private advance(): void {
+        const char = this.source[this.index];
+
+        if (char === '\n') {
+            this.line++;
+            this.column = 1;
+        } else {
+            this.column++;
+        }
+
+        this.index++;
+    }
+
     private position(): Position {
         return {
             index: this.index,
@@ -482,18 +512,9 @@ export default class Tokenizer {
         };
     }
 
-    private transition(table: TransitionType, state: State, char: CharClass): State | null | undefined {
+    private transition(table: TransitionType, state: State, char: CharClass): State | undefined {
         this.previousState = state;
-
-        const nextState = table[state]?.[char];
-
-        if (nextState) {
-            return nextState;
-        } else if (nextState === undefined) {
-            return undefined;
-        } else {
-            return null;
-        }
+        return table[state]?.[char];
     }
 
     private reject(
@@ -553,7 +574,7 @@ export default class Tokenizer {
 
             // Create an empty line with an arrow pointing at the error
             const pL = ' '.repeat(prefix.length);
-            const tL = '↑'.repeat(target.length);
+            const tL = '▲'.repeat(target.length);
             const arrow = `${RESET}${pL}${RED}${BOLD}${tL}${RESET}`;
 
             // Develop error details
