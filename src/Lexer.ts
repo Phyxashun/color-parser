@@ -1,9 +1,8 @@
 // src/Lexer.ts
 
-import util from 'util';
 import { Tree } from './PrettyTree.ts';
-import { RESET, RED, YELLOW, GREEN, BLUE, BOLD, BrRED, BrYELLOW, CYAN, MAGENTA, WHITE, DOUBLEUNDERLINE, UNDERLINE, BrMAGENTA, BLINK, HIDDEN, BrGREEN } from './AnsiCodes.ts';
-import { LexerError } from './Tokenizer.ts';
+import { RESET, RED, YELLOW, GREEN, BLUE, BOLD, MAGENTA, WHITE, UNDERLINE, BrMAGENTA } from './AnsiCodes.ts';
+import TokenReport from './TokenReport.ts';
 
 /**
  * Deterministic Finite Automaton
@@ -18,28 +17,28 @@ import { LexerError } from './Tokenizer.ts';
  *  F               Accepting states                    { q2 }
  * 
  */
-interface Token {
+export interface Token {
     type: TokenType;
     value: string;
 }
 
-interface Position {
+export interface Position {
     index: number;
     line: number;
     column: number;
 }
 
-type TokenType = typeof TokenType[keyof typeof TokenType];
-type CharClass = typeof CharClass[keyof typeof CharClass];
-type CharClassFn = (char: string) => boolean;
-type State = typeof State[keyof typeof State];
-type StateType<T extends string> = { [K in T]: `<${Lowercase<K>}>`; }; // QType
-type CharClassType = [CharClass, CharClassFn][] // SigmaType
-type TransitionType = Record<State, Partial<Record<CharClass, State>>>; // DeltaType
-type AcceptingType = Partial<Record<State, TokenType>>; // Ftype
+export type TokenType = typeof TokenType[keyof typeof TokenType];
+export type CharClass = typeof CharClass[keyof typeof CharClass];
+export type CharClassFn = (char: string) => boolean;
+export type State = typeof State[keyof typeof State];
+export type StateType<T extends string> = { [K in T]: `<${Lowercase<K>}>`; }; // QType
+export type CharClassType = [CharClass, CharClassFn][] // SigmaType
+export type TransitionType = Record<State, Partial<Record<CharClass, State>>>; // DeltaType
+export type AcceptingType = Partial<Record<State, TokenType>>; // Ftype
 
 // Terminals used in accepting states
-const TokenType = {
+export const TokenType = {
     // String and Numeric Literals
     IDENTIFIER: 'IDENTIFIER',  // words
     STRING: 'STRING',          // string literals
@@ -68,7 +67,7 @@ const TokenType = {
 } as const;
 
 // Σ (Sigma) - the set of allowed characters
-const CharClass: {
+export const CharClass: {
     readonly Whitespace: 'Whitespace';
     readonly Quote: 'Quote';
     readonly Letter: 'Letter';
@@ -110,9 +109,9 @@ const CharClass: {
     EOF: 'EOF',
 } as const;
 
-const hexRegex = /^(#?([a-f0-9]{3,4}|[a-f0-9]{6}|[a-f0-9]{8}))$/i;
+export const hexRegex = /^(#?([a-f0-9]{3,4}|[a-f0-9]{6}|[a-f0-9]{8}))$/i;
 
-const CharSpec: CharClassType = [
+export const CharSpec: CharClassType = [
     [CharClass.Whitespace, (char: string) => /\s/.test(char)],
     [CharClass.Letter, (char: string) => /[a-z]/i.test(char)],
     [CharClass.Digit, (char: string) => /\d/.test(char)],
@@ -157,11 +156,11 @@ const CharSpec: CharClassType = [
     [CharClass.Unicode, (char: string) => /[^\x00-\x7F]/.test(char)],
 ];
 
-type ClassifyFunction = (char: string) => CharClass;
+export type ClassifyFunction = (char: string) => CharClass;
 
-const charLookup = new Map<string, CharClass>();
+export const charLookup = new Map<string, CharClass>();
 
-const classify: ClassifyFunction = (char: string): CharClass => {
+export const classify: ClassifyFunction = (char: string): CharClass => {
     for (const [charClass, charClassFn] of CharSpec) {
         if (charClassFn(char)) return charClass as CharClass;
     }
@@ -175,7 +174,7 @@ for (let i = 0; i < 256; i++) {
 // End of Σ (Sigma)
 
 // Q - the set of all possible states
-const State = {
+export const State = {
     Start: '<start>',
     Whitespace: '<whitespace>',
     InsideQuote: '<inside-quote>',
@@ -197,7 +196,7 @@ const State = {
 // End of Q
 
 // δ (delta) - the set of rules for transitioning between states
-const Transition: TransitionType = {
+export const Transition: TransitionType = {
     [State.Start]: {
         [CharClass.Quote]: State.InsideQuote,
         [CharClass.Whitespace]: State.Whitespace,
@@ -324,7 +323,7 @@ const Transition: TransitionType = {
 // End of // δ (delta)
 
 // F - the set of accepting states
-const Accepting: AcceptingType = {
+export const Accepting: AcceptingType = {
     [State.Whitespace]: TokenType.WHITESPACE,
     [State.HexValue]: TokenType.HEXVALUE,
     [State.Unicode]: TokenType.UNICODE,
@@ -350,24 +349,34 @@ export default class Tokenizer {
     private currentState: State = State.Start;
     private previousState: State = State.Start;
     private errorCount: number = 0;
+    private tokenReport: TokenReport | undefined = undefined;
     private readonly tokens: Token[] = [];
 
     constructor(input: string, debug?: boolean) {
         this.source = input ?? '';
         this.debug = debug ?? false;
-        this.tokenize();
-        this.displayTree();
+
+        const done = this.tokenize();
+        if (done) {
+            this.tokenReport =
+                new TokenReport(
+                    100,
+                    ' Tokenization Report ',
+                    this.source,
+                    this.tokens,
+                    this.errorCount
+                );
+            this.tokenReport.show();
+        }
     }
 
-    public tokenize = (): Token[] => {
-        const tokens: Token[] = [];
-
+    public tokenize = (): boolean => {
         while (!this.isEOF()) {
             let type: TokenType;
             let value: string = '';
             this.currentState = State.Start;
-            const startPos: Position = this.position();
 
+            const startPos: Position = this.position();
             while (true) {
                 if (this.isEOF()) break;
 
@@ -405,7 +414,7 @@ export default class Tokenizer {
                         const msg = `Skipped unexpected character at ${this.index}: '${value}'`;
                         //this.displayError(this.currentState, msg, startPos.index, endPos.index, value);
                         this.errorCount++;
-                        tokens.push({ type: TokenType.ERROR, value });
+                        this.tokens.push({ type: TokenType.ERROR, value });
                         continue;
                     }
                     break;
@@ -418,7 +427,7 @@ export default class Tokenizer {
                     const match = value.match(hexRegex);
                     if (match) {
                         type = Accepting[this.currentState]!;
-                        tokens.push({
+                        this.tokens.push({
                             type,
                             value: match[0],
                         });
@@ -427,7 +436,7 @@ export default class Tokenizer {
                         this.currentState = State.Error;
                         //this.displayError(this.currentState, undefined, startPos.index, endPos.index, value);
                         this.errorCount++;
-                        tokens.push({ type: TokenType.ERROR, value });
+                        this.tokens.push({ type: TokenType.ERROR, value });
                         continue;
                     }
 
@@ -441,29 +450,24 @@ export default class Tokenizer {
                 case State.Percent:
                 case State.Exponent:
                     type = Accepting[this.currentState]!;
-                    tokens.push({ type, value });
+                    this.tokens.push({ type, value });
                     break;
 
                 // INVALID TOKEN
                 case State.Error:
                     //this.displayError(this.currentState, undefined, startPos.index, endPos.index, value);
                     this.errorCount++;
-                    tokens.push({ type: TokenType.ERROR, value });
+                    this.tokens.push({ type: TokenType.ERROR, value });
                     break;
                 default:
                     type = Accepting[this.currentState]!;
-                    tokens.push({ type, value });
+                    this.tokens.push({ type, value });
                     break;
             }
         }
 
-        tokens.push({ type: TokenType.EOF, value: '<end>' });
-
-        for (const token of tokens) {
-            this.tokens.push(token);
-        }
-
-        return tokens;
+        this.tokens.push({ type: TokenType.EOF, value: '<end>' });
+        return true;
     }
 
     private isEOF = () => {
@@ -573,149 +577,7 @@ export default class Tokenizer {
         console.log();
         console.log(Tree(errorDetails, 'Tokenizer Error Log', 'Detailed Information', undefined, true, false));
     }
-
-    private createTokenTree = (tokens: Token[], rootLabel: string = 'Token Tree') => {
-        return {
-            label: rootLabel,
-            nodes: tokens.map((token, index) => ({
-                label: `Token [${index}] (${token.type})`,
-                leaf: token
-            }))
-        };
-    }
-
-    private splitString(str: string, maxLength?: number): string[] {
-        maxLength = maxLength ?? 50;
-        if (str.length <= maxLength) return [str];
-        const midpoint = Math.ceil(str.length / 2);
-        if (midpoint > 45) return [str];
-        const first = str.substring(0, midpoint);
-        const second = str.substring(midpoint);
-        return [first, second];
-    }
-
-    public displayTree() {
-        // TITLE AND COLORS
-        const title = ' TOKENIZING STRING INPUT ';
-        const titleColor = CYAN;
-        const barColor = WHITE;
-        const headingColor = BrGREEN;
-        const arrowColor = MAGENTA + BOLD;
-        const dataColor = YELLOW + BOLD;
-
-        // CALCULATE LENGTHS
-        const maxLength = 100;
-        const maxSourceLength = maxLength / 2;
-        const [first, second] = this.splitString(this.source, maxSourceLength);
-
-        // CALCULATE PADDING
-        let rTitlePadding = Math.ceil((maxLength - title.length) / 2);
-        const remainder = rTitlePadding % 2;
-        const lTitlePadding = (remainder === 0) ? rTitlePadding : rTitlePadding + remainder;
-        const totalTitleLength = lTitlePadding + title.length + rTitlePadding;
-        if (totalTitleLength > maxLength) {
-            const targetLength = totalTitleLength - maxLength;
-            rTitlePadding -= targetLength;
-        }
-
-        // SMALL PIECES
-        const tabs = `\t\t`;
-        const rightArrow = `${arrowColor}►\t\t${RESET}`;
-        const leftArrow = `${arrowColor}\t\t◄${RESET}`;
-        const bar = '═'.repeat(maxLength);
-        const longBar = '█'.repeat(maxLength)
-        const leftTitle = '█'.repeat(lTitlePadding);
-        const rightTitle = '█'.repeat(rTitlePadding);
-        const centerTitle = `${titleColor}${title}${RESET}`;
-        const sourceStringHeading = `${headingColor}${BOLD}Input String:${RESET}`;
-        const sourceStringFirst = `${dataColor}${first}${RESET}`;
-        const sourceStringSecond = second ? `${dataColor}${second}${RESET}` : '';
-        const sourceLengthHeading = `${headingColor}${BOLD}Input Length:${RESET}`;
-        const sourceLength = `${dataColor}${this.source.length}${RESET}`;
-
-        // PUTTING PIECES TOGETHER
-        const barRow = `${barColor}${bar}${RESET}`;
-        const longBarRow = `${barColor}${longBar}${RESET}`;
-        const titleRow = `${leftTitle}${centerTitle}${rightTitle}`;
-        const sourceStringHeadingRow = `${sourceStringHeading}\n`;
-        const sourceStringFirstRow = `${tabs}${rightArrow}${sourceStringFirst}${leftArrow}`;
-        const sourceStringSecondRow = second ? `${tabs}${rightArrow}${sourceStringSecond}${leftArrow}` : '';
-        const sourceLengthHeadingRow = `${sourceLengthHeading}\n`;
-        const sourceLengthRow = `${tabs}${sourceLength}`;
-        const treeRow = Tree(this.tokens, 'Token Tree', 'Token', this.createTokenTree);
-
-        // DISPLAY REPORT
-        console.log(`\n${barRow}`);
-        console.log(`${longBarRow}`);
-        console.log(`${titleRow}`);
-        console.log(`${longBarRow}`);
-        console.log(`${barRow}`);
-        console.log(`${headingColor}${BOLD}Error Count:${RESET}\t`, this.errorCount);
-        console.log(`${sourceStringHeadingRow}`);
-        console.log(`${sourceStringFirstRow}`);
-        if (second) console.log(`${sourceStringSecondRow}\n`);
-        if (!second) console.log();
-        console.log(`${barRow}`);
-        console.log(`${sourceLengthHeadingRow}`);
-        console.log(`${sourceLengthRow}\n`);
-        console.log(`${barRow}\n`);
-        console.log(`${treeRow}`);
-        console.log(`${barRow}`);
-
-        // DISPLAY COMPLETED BANNER
-        this.displayBanner(maxLength, ' COMPLETED TOKENIZATION!!! ');
-    }
-
-    private displayBanner(maxLength: number, title?: string) {
-        // TITLE AND COLORS
-        title = title ?? '';
-        const titleColor = YELLOW;
-        const frameColor = GREEN;
-
-        // CALCULATE LENGTHS
-        const framePieceLength = 2;
-        const barLength = maxLength - framePieceLength;
-
-        // CALCULATE PADDING
-        let rTitlePadding = Math.ceil((maxLength - title.length) / 2);
-        const remainder = rTitlePadding % 2;
-        const lTitlePadding = (remainder === 0) ? rTitlePadding : rTitlePadding + remainder;
-        const totalTitleLength = lTitlePadding + title.length + rTitlePadding + framePieceLength;
-        if (totalTitleLength > maxLength) {
-            const targetLength = totalTitleLength - maxLength;
-            rTitlePadding -= targetLength;
-        }
-
-        // OUTER PIECES
-        const tlc = `${frameColor}╔${RESET}`;
-        const trc = `${frameColor}╗${RESET}`;
-        const blc = `${frameColor}╚${RESET}`;
-        const brc = `${frameColor}╝${RESET}`;
-        const h = `${frameColor}═${RESET}`;
-        const v = `${frameColor}║${RESET}`;
-        const s = `${frameColor}█${RESET}`;
-
-        // INNER PIECES
-        const colorTitle = `${titleColor}${title}${RESET}`;
-        const bar = h.repeat(barLength);
-        const space = s.repeat(barLength);
-        const lTitle = s.repeat(lTitlePadding);
-        const rTitle = s.repeat(rTitlePadding);
-
-        // PUT IT ALL TOGETHER
-        const topRow = `${tlc}${bar}${trc}`;
-        const spaceRow = `${v}${space}${v}`;
-        const titleRow = `${v}${lTitle}${colorTitle}${rTitle}${v}`;
-        const botRow = `${blc}${bar}${brc}`;
-
-        // DISPLAY BANNER
-        console.log(`${topRow}`);
-        console.log(`${spaceRow}`);
-        console.log(`${titleRow}`);
-        console.log(`${spaceRow}`);
-        console.log(`${botRow}\n`);
-    }
-}
+} // End Class Tokenizer
 
 // SMALL TEST EXAMPLE
 (() => {
@@ -756,8 +618,6 @@ export default class Tokenizer {
 * ---------------------------------------------------------------------------
 */
 
-
-
 /*
                                     Windows-1252
 ------------------------------------------------------------------------------------
@@ -785,4 +645,3 @@ g  h  i  j  k  l  m  n  o  p  q  r  s  t  u  v  w  x  y  z  {  |  }  ~  ␡  €
 ø  ù  ú  û  ü  ý  þ  ÿ
 
 */
-
