@@ -1,4 +1,5 @@
-import util from 'util';
+import { inspect, type InspectOptions } from 'node:util';
+import PrettyTree, { Tree, type ArchyNode } from './PrettyTree';
 
 export type CharClass = typeof CharClass[keyof typeof CharClass];
 export type CharClassFn = (char: string) => boolean;
@@ -44,19 +45,81 @@ export const CharClass = {
     Error: 'Error',
 } as const;
 
-export interface Position {
+export class CharToken implements Iterable<CharToken> {
+    character: string;
+    class: CharClass;
     index: number;   // absolute index
     line: number;    // 1-based
     column: number;  // 1-based
-}
 
-export interface CharToken {
-    char: string;
-    class: CharClass;
-    position: Position;
+    constructor(char: string, charClass: CharClass | undefined, index: number, line: number, column: number) {
+        this.character = char || '';
+        this.class = charClass || classify(this.character);
+        this.index = index || 0;
+        this.line = line || 1;
+        this.column = column || 1;
+    }
+
+    *[Symbol.iterator]() {
+        return this;
+    }
+
+    [inspect.custom](depth: number, options: any, inspect: any) {
+        if (depth < 0) {
+            return options.stylize('[CharToken]', 'special');
+        }
+
+        const newOptions = Object.assign({}, options, {
+            depth: options.depth === null ? null : options.depth - 1,
+            colors: true,
+            maxArrayLength: null,
+        });
+
+        // Five space padding because that's the size of "Box< ".
+        const padding = ' '.repeat(11);
+        const inner = inspect({
+            character: this.character,
+            class: this.class,
+            index: this.index,
+            line: this.line,
+            column: this.column,
+        }, newOptions).replace(/\n/g, `\n${padding}`);
+        return `${options.stylize('CharToken', 'special')}< ${inner} >`;
+    }
+
+    toString(): string {
+        const options = {
+            depth: null,
+            colors: true,
+            maxArrayLength: null,
+        };
+        return inspect({
+            character: this.character,
+            class: this.class,
+            index: this.index,
+            line: this.line,
+            column: this.column,
+        }, options);
+    }
+
+    static createTreeData = (
+        data: any,
+        rootLabel: string = 'Data Stream',
+        leafLabel: string = 'Data'
+    ): ArchyNode => {
+        return {
+            label: `${rootLabel}`,
+            nodes: data.forEach((item: any, index: number) =>
+            ({
+                label: `${leafLabel} [${index}]`,
+                leaf: item,
+            }))
+        };
+    }
 }
 
 export const CharSpec: CharClassType = [
+    [CharClass.Newline, (char) => char === '\n'],
     [CharClass.Whitespace, (char) => /\s/u.test(char)],
 
     // Unicode letters
@@ -101,93 +164,94 @@ export const CharSpec: CharClassType = [
     [CharClass.Unicode, (char) => /[^\x00-\x7F]/.test(char)],
 ];
 
-export const classify: ClassifyFunction = (char: string): CharClass => {
-    for (const [charClass, fn] of CharSpec) {
-        if (fn(char)) return charClass as CharClass;
-    }
-    return CharClass.Other;
-}
+export const classify: ClassifyFunction = (char) => {
+    if (char === '\n') return CharClass.Newline;
+    if (charMap.has(char)) return charMap.get(char)!;
+
+    let cls: CharClass;
+    const direct = charMap.get(char);
+
+    if (direct) cls = direct;
+    else if (/\p{L}/u.test(char)) cls = CharClass.Letter;
+    else if (/\p{Nd}/u.test(char)) cls = CharClass.Digit;
+    else if (/\s/u.test(char)) cls = CharClass.Whitespace;
+    else if (/[^\x00-\x7F]/.test(char)) cls = CharClass.Unicode;
+    else cls = CharClass.Other;
+
+    charMap.set(char, cls);
+    return cls;
+};
+
+export const charMap = new Map<string, CharClass>([
+    ['(', CharClass.LParen],
+    [')', CharClass.RParen],
+    ['+', CharClass.Plus],
+    ['-', CharClass.Minus],
+    ['#', CharClass.Hash],
+]);
 
 // CharStream.ts
-export class CharStream {
+export class CharStream implements Iterable<CharToken>, Iterator<CharToken> {
     private readonly maxLength: number = 50;
     private readonly chars: string[];
-    private position: Position = {
-        index: 0,
-        line: 1,
-        column: 1,
-    }
-    private tokens: CharToken[] = [];
+
+    private index: number = 0;
+    private line: number = 1;
+    private column: number = 1;
+
     private history: CharToken[] = [];
 
     constructor(input: string) {
-        this.chars = this.split(input);
-        this.init();
+        this.chars = CharStream.split(input, this.maxLength);
+    }
+
+    /* ------------------------- Iterator ------------------------- */
+    public get() {
+        //return this.next().value;
+    }
+
+    next(): IteratorResult<CharToken> {
+        if (this.isEOF()) return { value: this.EOFToken(), done: true };
+        return { value: this.consume(), done: false };
+    }
+
+    [Symbol.iterator](): Iterator<CharToken> {
+        this.reset();
+        return this; // the iterator is itself iterable
     }
 
     /* -------------------------------------------------- */
     /* Internal                                           */
     /* -------------------------------------------------- */
 
-    init() {
-        console.log('CHARS:', this.chars);
-        for (const char of this.chars) {
-            console.log('CHAR:', char);
-            if (!this.isEOF) {
-                this.tokens.push(this.makeToken(char));
-                this.advance(char);
-                this.consume();
-            }
-        }
-        this.tokens.push(this.EOFToken());
-    }
-
-    *[Symbol.iterator](): Generator<CharToken> {
-        yield* this.tokens;
-    }
-
     private isEOF() {
-        return this.position.index >= this.chars.length;
-    }
-
-    private makeToken(ch: string): CharToken {
-        return {
-            char: ch,
-            class: classify(ch),
-            position: this.getPosition(),
-        };
-    }
-
-    private advance(ch: string): void {
-        this.position.index++;
-
-        if (ch === '\n') {
-            this.position.line++;
-            this.position.column = 1;
-        } else {
-            this.position.column++;
-        }
-    }
-
-    private retreat(token: CharToken): void {
-        this.position = token.position;
+        return this.index >= this.chars.length;
     }
 
     private EOFToken(): CharToken {
-        return {
-            char: '',
-            class: CharClass.EOF,
-            position: this.getPosition(),
-
-        };
+        return new CharToken('', CharClass.EOF, this.index, this.line, this.column);
     }
 
-    private getPosition(): Position {
-        return {
-            index: this.position.index,
-            line: this.position.line,
-            column: this.position.column,
+    private makeToken(char: string): CharToken {
+        return new CharToken(char, undefined, this.index, this.line, this.column);
+    }
+
+    private advance(char: string): this {
+        this.index++;
+        if (char === '\n') {
+            this.line++;
+            this.column = 1;
+        } else {
+            this.column++;
         }
+        return this;
+    }
+
+    private goto(token: CharToken): this {
+        this.index = token.index;
+        this.line = token.line;
+        this.column = token.column;
+        return this;
     }
 
     /* -------------------------------------------------- */
@@ -195,29 +259,30 @@ export class CharStream {
     /* -------------------------------------------------- */
 
     peek(): CharToken {
-        if (this.isEOF()) {
-            return this.EOFToken();
-        }
-        return this.makeToken(this.chars[this.position.index]!);
+        if (this.isEOF()) return this.EOFToken();
+        return this.makeToken(this.chars[this.index]!);
     }
 
     rewind(): CharToken | null {
         const token = this.history.pop();
         if (!token) return null;
-
-        this.retreat(token);
+        this.goto(token);
         return token;
     }
 
     previous(): CharToken | null {
-        return this.history.at(-1) ?? null;
+        const token = this.history.at(-1) ?? null;
+        if (!token) return null;
+        this.goto(token);
+        return token;
     }
 
-    reset(): void {
-        this.position.index = 0;
-        this.position.line = 1;
-        this.position.column = 1;
+    reset(): this {
+        this.index = 0;
+        this.line = 1;
+        this.column = 1;
         this.history.length = 0;
+        return this;
     }
 
     /* -------------------------------------------------- */
@@ -225,13 +290,9 @@ export class CharStream {
     /* -------------------------------------------------- */
 
     consume(): CharToken {
-        const token = this.peek();
-
-        if (token.class !== CharClass.EOF) {
-            this.history.push(token);
-            this.advance(token.char);
-        }
-
+        const token = this.makeToken(this.chars[this.index]!);
+        this.history.push(token);
+        this.advance(token.character);
         return token;
     }
 
@@ -273,33 +334,20 @@ export class CharStream {
     /* -------------------------------------------------- */
     /* Utilities                                         */
     /* -------------------------------------------------- */
-    public split(input: string): string[] {
-        const codePoints = Array.from(input);
-        if (codePoints.length >= this.maxLength) return codePoints;
+    public static split(input: string, maxLength: number = 50): string[] {
+        const codePoints = Array.from(input.normalize('NFC'));
+        const result: string[] = [];
 
-        const lines: string[] = [];
-        let buffer: string[] = [];
-
+        let count = 0;
         for (const ch of codePoints) {
-            if (ch === '\n') {
-                lines.push(buffer.join(''));
-                buffer = [];
-                continue;
-            }
-
-            buffer.push(ch);
-
-            if (buffer.length >= this.maxLength) {
-                lines.push(buffer.join(''));
-                buffer = [];
+            result.push(ch);
+            count++;
+            if (ch === '\n' || count >= maxLength) {
+                if (ch !== '\n') result.push('\n');
+                count = 0;
             }
         }
-
-        if (buffer.length) lines.push(buffer.join(''));
-
-        const result = lines.join('\n');
-
-        return [result];
+        return result;
     }
 }
 
@@ -313,14 +361,18 @@ const test = () => {
         maxArrayLength: null,
     };
 
-    const str = "This is a very long string that we want to split into multiple lines to make it more readable and fit within a specific display constraint.";
+    const str = "This is a very long string";// that we want to split into multiple lines to make it more readable and fit within a specific display constraint.";
     const test = new CharStream(str);
-
-    //test.buildCharInformation();
+    const result: CharToken[] = [];
+    console.log();
     for (const t of test) {
-        console.log(util.inspect(t, options));
+        console.log(inspect(t));
+        result.push(t);
     }
 
+    const tokenTree = new PrettyTree(true, true);
+
+    console.log()
 
 }
 

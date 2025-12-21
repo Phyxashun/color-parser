@@ -159,10 +159,13 @@ class PrettyTree {
         data: any,
         rLabel?: string,
         lLabel?: string,
-        fn = PrettyTree.createTreeData,
-        color: boolean = true,
-        sameLine: boolean = true
+        fn?: (data: any, rootLabel?: string, leafLabel?: string) => ArchyNode,
+        color?: boolean,
+        sameLine?: boolean,
     ) => {
+        fn = fn ?? PrettyTree.createTreeData;
+        color = color || true;
+        sameLine = sameLine || false;
         // Create a color-enabled PrettyTree Instance
         const prettyTree = new PrettyTree(color, sameLine);
         // Create the tree data required for the render method
