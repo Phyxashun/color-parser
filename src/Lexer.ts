@@ -31,14 +31,19 @@ export interface Position {
 }
 
 export type TokenType = typeof TokenType[keyof typeof TokenType];
+
 export type CharClass = typeof CharClass[keyof typeof CharClass];
 export type CharClassFn = (char: string) => boolean;
+export type CharClassType = [CharClass, CharClassFn][] // SigmaType
+export type ClassifyFunction = (char: string) => CharClass;
+
 export type State = typeof State[keyof typeof State];
 export type StateType<T extends string> = { [K in T]: `<${Lowercase<K>}>`; }; // QType
-export type CharClassType = [CharClass, CharClassFn][] // SigmaType
+
 export type TransitionType = Record<State, Partial<Record<CharClass, State>>>; // DeltaType
+
 export type AcceptingType = Partial<Record<State, TokenType>>; // Ftype
-export type ClassifyFunction = (char: string) => CharClass;
+
 
 // Terminals used in accepting states
 export const TokenType = {
@@ -70,27 +75,7 @@ export const TokenType = {
 } as const;
 
 // Σ (Sigma) - the set of allowed characters
-export const CharClass: {
-    readonly Whitespace: 'Whitespace';
-    readonly Quote: 'Quote';
-    readonly Letter: 'Letter';
-    readonly Digit: 'Digit';
-    readonly Exponent: 'Exponent'
-    readonly Percent: 'Percent';
-    readonly Dot: 'Dot';
-    readonly LParen: 'LParen';
-    readonly RParen: 'RParen';
-    readonly Comma: 'Comma';
-    readonly Slash: 'Slash';
-    readonly Plus: 'Plus';
-    readonly Minus: 'Minus';
-    readonly Hash: 'Hash';
-    readonly Hex: 'Hex';
-    readonly Unicode: 'Unicode';
-    readonly Operator: 'Operator';
-    readonly Other: 'Other';
-    readonly EOF: 'EOF';
-} = {
+export const CharClass = {
     Whitespace: 'Whitespace',
     Quote: 'Quote',
     Letter: 'Letter',
