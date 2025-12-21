@@ -1,5 +1,6 @@
 import { inspect, type InspectOptions } from 'node:util';
 import PrettyTree, { Tree, type ArchyNode } from './PrettyTree';
+import { treeify } from './treeify';
 
 export type CharClass = typeof CharClass[keyof typeof CharClass];
 export type CharClassFn = (char: string) => boolean;
@@ -87,6 +88,7 @@ export class CharToken implements Iterable<CharToken> {
         return `${options.stylize('CharToken', 'special')}< ${inner} >`;
     }
 
+    /*
     toString(): string {
         const options = {
             depth: null,
@@ -101,21 +103,7 @@ export class CharToken implements Iterable<CharToken> {
             column: this.column,
         }, options);
     }
-
-    static createTreeData = (
-        data: any,
-        rootLabel: string = 'Data Stream',
-        leafLabel: string = 'Data'
-    ): ArchyNode => {
-        return {
-            label: `${rootLabel}`,
-            nodes: data.forEach((item: any, index: number) =>
-            ({
-                label: `${leafLabel} [${index}]`,
-                leaf: item,
-            }))
-        };
-    }
+    */
 }
 
 export const CharSpec: CharClassType = [
@@ -199,7 +187,7 @@ export class CharStream implements Iterable<CharToken>, Iterator<CharToken> {
     private line: number = 1;
     private column: number = 1;
 
-    private history: CharToken[] = [];
+    history: CharToken[] = [];
 
     constructor(input: string) {
         this.chars = CharStream.split(input, this.maxLength);
@@ -353,7 +341,7 @@ export class CharStream implements Iterable<CharToken>, Iterator<CharToken> {
 
 
 // TESTING
-
+/*
 const test = () => {
     const options = {
         depth: null,
@@ -364,16 +352,17 @@ const test = () => {
     const str = "This is a very long string";// that we want to split into multiple lines to make it more readable and fit within a specific display constraint.";
     const test = new CharStream(str);
     const result: CharToken[] = [];
-    console.log();
-    for (const t of test) {
-        console.log(inspect(t));
-        result.push(t);
+
+    for (const token of test) {
+
+
+        result.push(token[Symbol.iterator]().next().value);
     }
 
     const tokenTree = new PrettyTree(true, true);
 
-    console.log()
-
+    console.log(inspect(result, options))
 }
 
 test();
+*/

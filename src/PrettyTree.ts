@@ -15,8 +15,8 @@ const Echo: ((s: string) => string) = (val: string) => val;
 
 class PrettyTree {
     // Private fields to hold the configuration and colors
-    private sameLine: boolean;
-    private useColor: boolean;
+    private sameLine: boolean = false;
+    private useColor: boolean = true;
     private primaryLabelColor: typeof Chalk | typeof Echo;
     private secondaryKeyColor: typeof Chalk | typeof Echo;
     private tertiaryColor: typeof Chalk | typeof Echo;
@@ -26,9 +26,9 @@ class PrettyTree {
      * Creates an instance of PrettyTree.
      * @param useColor Set to false to disable colors in the output.
      */
-    constructor(useColor: boolean = true, sameLine: boolean = false) {
-        this.useColor = useColor;
-        this.sameLine = sameLine;
+    constructor(useColor?: boolean, sameLine?: boolean) {
+        this.useColor = useColor ? useColor : true;
+        this.sameLine = sameLine ? sameLine : false;
 
         // Set up the color functions based on the constructor argument
         this.primaryLabelColor = this.useColor ? Chalk.greenBright : Echo;
@@ -159,13 +159,12 @@ class PrettyTree {
         data: any,
         rLabel?: string,
         lLabel?: string,
-        fn?: (data: any, rootLabel?: string, leafLabel?: string) => ArchyNode,
-        color?: boolean,
-        sameLine?: boolean,
+        fn: ((data: any, rootLabel?: string, leafLabel?: string) => ArchyNode) | undefined = undefined,
+        color: boolean = true,
+        sameLine: boolean = false,
     ) => {
         fn = fn ?? PrettyTree.createTreeData;
-        color = color || true;
-        sameLine = sameLine || false;
+
         // Create a color-enabled PrettyTree Instance
         const prettyTree = new PrettyTree(color, sameLine);
         // Create the tree data required for the render method

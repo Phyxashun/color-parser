@@ -5,6 +5,7 @@ import { Tree } from './PrettyTree.ts';
 import { RESET, RED, YELLOW, GREEN, BLUE, BOLD, MAGENTA, WHITE, UNDERLINE, BrMAGENTA } from './AnsiCodes.ts';
 import TokenReport from './TokenReport.ts';
 import Banner from './Banner.ts';
+import { CharStream } from './TokenStream.ts';
 
 /**
  * Deterministic Finite Automaton
@@ -331,7 +332,7 @@ export const Accepting: AcceptingType = {
 // End of F
 
 export default class Tokenizer {
-    private readonly source: string;
+    private readonly source: CharStream;
     private debug: boolean = false;
     private index = 0;
     private line = 1;
@@ -346,7 +347,7 @@ export default class Tokenizer {
     private readonly tokens: Token[] = [];
 
     constructor(input: string, debug?: boolean) {
-        this.source = input ?? '';
+        this.source = new CharStream(input);
         this.debug = debug ?? false;
 
         const options = {
@@ -390,24 +391,24 @@ export default class Tokenizer {
 
 
             while (true) {
-                const char = this.source[this.index];
+                const char = this.source.next();
                 if (!char) break;
 
-                this.currentCharClass = classify(char);
+                this.currentCharClass = char.value.class;
                 if (!this.currentCharClass) {
                     this.reject(undefined, startPos, value);
                     break;
                 }
 
                 if (this.currentState === State.Start && this.currentCharClass === CharClass.Quote) {
-                    this.quoteChar = char;
+                    this.quoteChar = char.value.character;
                 }
 
                 if (
                     this.currentState === State.InsideQuote &&
                     this.currentCharClass === CharClass.Quote
                 ) {
-                    if (this.quoteChar && this.isMatchingQuote(this.quoteChar, char)) {
+                    if (this.quoteChar && this.isMatchingQuote(this.quoteChar, char.value.character)) {
                         this.currentState = State.EndQuote;
                         this.advance();
                         break;
@@ -427,7 +428,7 @@ export default class Tokenizer {
             const endPos: Position = this.position();
 
             //value += char;
-            value = this.source.slice(startPos.index, endPos.index).normalize('NFC');
+            value = this.source.history[this.index]!.character.slice(startPos.index, endPos.index).normalize('NFC');
 
             switch (this.currentState) {
 
@@ -530,7 +531,7 @@ export default class Tokenizer {
     }
 
     private advance(): void {
-        const char = this.source[this.index];
+        const char = this.source.history[this.index]?.character;
 
         if (char === '\n') {
             this.line++;
@@ -624,17 +625,17 @@ export default class Tokenizer {
             if (startPos === endPos) endPos++;
 
             // Create new colored source, highlighting invalid character
-            const prefix = this.source.substring(0, startPos);
-            const target = this.source.substring(startPos, endPos);
-            const suffix = this.source.substring(endPos);
+            const prefix = this.source.history[this.index]?.character.substring(0, startPos);
+            const target = this.source.history[this.index]?.character.substring(startPos, endPos);
+            const suffix = this.source.history[this.index]?.character.substring(endPos);
             const cPrefix = `${WHITE}${prefix}${RESET}`;
             const cTarget = `${BrMAGENTA}${BOLD}${UNDERLINE}${target}${RESET}`;
             const cSuffix = `${WHITE}${suffix}${RESET}`
             const cSourceRow = `${cPrefix}${cTarget}${cSuffix}`;
 
             // Create an empty line with an arrow pointing at the error
-            const pL = ' '.repeat(prefix.length);
-            const tL = '▲'.repeat(target.length);
+            const pL = ' '.repeat(prefix!.length);
+            const tL = '▲'.repeat(target!.length);
             const cArrowRow = `${RESET}${pL}${RED}${BOLD}${tL}${RESET}\n`;
 
             // Color Error Details
