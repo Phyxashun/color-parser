@@ -332,6 +332,7 @@ export const Accepting: AcceptingType = {
 // End of F
 
 export default class Tokenizer {
+    private readonly input: string;
     private readonly source: CharStream;
     private debug: boolean = false;
     private index = 0;
@@ -347,37 +348,40 @@ export default class Tokenizer {
     private readonly tokens: Token[] = [];
 
     constructor(input: string, debug?: boolean) {
+        this.input = input ?? '';
         this.source = new CharStream(input);
         this.debug = debug ?? false;
 
+        const done = this.tokenize();
+        if (done) this.showReport();
+    }
+
+    public showReport() {
         const options = {
             depth: null,
             colors: true,
             maxArrayLength: null,
         };
 
-        const done = this.tokenize();
-        if (done) {
-            // LONG REPORT
-            //this.tokenReport =
-            //    new TokenReport(
-            //        100,
-            //        ' TOKENIZATION REPORT ',
-            //        this.source,
-            //        this.tokens,
-            //        this.errorCount
-            //    );
-            //this.tokenReport.show();
+        // LONG REPORT
+        //this.tokenReport =
+        //    new TokenReport(
+        //        100,
+        //        ' TOKENIZATION REPORT ',
+        //        this.source,
+        //        this.tokens,
+        //        this.errorCount
+        //    );
+        //this.tokenReport.show();
 
-            // SHORT REPORT
-            console.log();
-            console.log(util.inspect({
-                title: ' TOKENIZATION REPORT ',
-                source: this.source,
-                errors: this.errorCount,
-                tokens: this.tokens,
-            }, options));
-        }
+        // SHORT REPORT
+        console.log();
+        console.log(util.inspect({
+            title: ' TOKENIZATION REPORT ',
+            source: this.source,
+            errors: this.errorCount,
+            //tokens: this.tokens,
+        }, options));
     }
 
     public tokenize = (): boolean => {
@@ -388,26 +392,20 @@ export default class Tokenizer {
             this.reset();
             const startPos: Position = this.position();
 
-
-
             while (true) {
                 const char = this.source.next();
                 if (!char) break;
 
                 this.currentCharClass = char.value.class;
                 if (!this.currentCharClass) {
-                    this.reject(undefined, startPos, value);
+                    //this.reject(undefined, startPos, value);
                     break;
                 }
 
-                if (this.currentState === State.Start && this.currentCharClass === CharClass.Quote) {
-                    this.quoteChar = char.value.character;
-                }
-
                 if (
-                    this.currentState === State.InsideQuote &&
-                    this.currentCharClass === CharClass.Quote
+                    this.currentState === State.InsideQuote && this.currentCharClass === CharClass.Quote
                 ) {
+                    this.quoteChar = char.value.character;
                     if (this.quoteChar && this.isMatchingQuote(this.quoteChar, char.value.character)) {
                         this.currentState = State.EndQuote;
                         this.advance();
@@ -506,7 +504,7 @@ export default class Tokenizer {
     }
 
     private isEOF = () => {
-        return this.index >= this.source.length;
+        return this.index >= this.input.length;
     }
 
     private isMatchingQuote(open: string, close: string): boolean {

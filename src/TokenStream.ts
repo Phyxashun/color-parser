@@ -2,13 +2,13 @@ import { inspect, type InspectOptions } from 'node:util';
 import PrettyTree, { Tree, type ArchyNode } from './PrettyTree';
 import { treeify } from './treeify';
 
-export type CharClass = typeof CharClass[keyof typeof CharClass];
-export type CharClassFn = (char: string) => boolean;
-export type ClassifyFunction = (char: string) => CharClass;
-export type CharClassType = [CharClass, CharClassFn][] // SigmaType
-export type Predicate = (token: CharToken) => boolean;
+export type CharType = typeof CharType[keyof typeof CharType];
+export type CharTypeFn = (char: string) => boolean;
+export type ClassifyFunction = (char: string) => CharType;
+export type CharTypeType = [CharType, CharTypeFn][] // SigmaType
+export type Predicate = (token: Character) => boolean;
 
-export const CharClass = {
+export const CharType = {
     // Structural and Whitespace
     Whitespace: 'Whitespace',
     Newline: 'Newline',
@@ -37,6 +37,7 @@ export const CharClass = {
     Minus: 'Minus',
     Slash: 'Slash',
     Percent: 'Percent',
+    Underscore: 'Underscore',
     Operator: 'Operator', // All others
 
     // Special and Meta Characters
@@ -46,29 +47,69 @@ export const CharClass = {
     Error: 'Error',
 } as const;
 
-export class CharToken implements Iterable<CharToken> {
-    character: string;
-    class: CharClass;
-    index: number;   // absolute index
-    line: number;    // 1-based
-    column: number;  // 1-based
+export const CharMap = new Map<string, CharType>([
+    ['%', CharType.Percent],
+    ['.', CharType.Dot],
+    [',', CharType.Comma],
+    ['/', CharType.Slash],
+    ['(', CharType.LParen],
+    [')', CharType.RParen],
+    ['+', CharType.Plus],
+    ['-', CharType.Minus],
+    ['_', CharType.Underscore],
+    ['#', CharType.Hash],
+    ['!', CharType.Operator],
+    ['\\', CharType.Operator],
+    ['*', CharType.Operator],
+    ['@', CharType.Operator],
+    ['$', CharType.Operator],
+    ['^', CharType.Operator],
+    ['&', CharType.Operator],
+    ['{', CharType.Operator],
+    ['}', CharType.Operator],
+    ['[', CharType.Operator],
+    [']', CharType.Operator],
+    ['|', CharType.Operator],
+    [':', CharType.Operator],
+    [';', CharType.Operator],
+    ['<', CharType.Operator],
+    ['>', CharType.Operator],
+    ['?', CharType.Operator],
+    ['~', CharType.Operator],
+    ['`', CharType.Operator],
+    ['=', CharType.Operator],
+]);
 
-    constructor(char: string, charClass: CharClass | undefined, index: number, line: number, column: number) {
-        this.character = char || '';
-        this.class = charClass || classify(this.character);
+export const CharSpec = new Map<CharType, CharTypeFn>([
+    [CharType.Whitespace, (char) => /\s/.test(char)],
+    [CharType.Letter, (char) => /\p{L}/u.test(char)],
+    [CharType.Digit, (char) => /\p{Nd}/u.test(char)],
+    [CharType.Quote, (char) => /["'`]|\p{Pi}|\p{Pf}/u.test(char)],
+    [CharType.Exponent, (char) => /[eE]/.test(char)],
+    [CharType.Hex, (char) => /[a-f0-9]/i.test(char)],
+    [CharType.Unicode, (char) => /[^\x00-\x7F]/.test(char)],
+]);
+
+
+export class Character {
+    value: string;
+    type: CharType;
+    index: number;
+    line: number;
+    column: number;
+    source: string;
+
+    constructor(value: string, type: CharType | undefined, index: number, line: number, column: number, source: string) {
+        this.value = value || '';
+        this.type = type || Character.classify(value);
         this.index = index || 0;
         this.line = line || 1;
         this.column = column || 1;
+        this.source = source || '';
     }
 
-    *[Symbol.iterator]() {
-        return this;
-    }
-
-    [inspect.custom](depth: number, options: any, inspect: any) {
-        if (depth < 0) {
-            return options.stylize('[CharToken]', 'special');
-        }
+    public [inspect.custom](depth: number, options: any, inspect: any) {
+        if (depth < 0) return options.stylize('[Character Object]', 'special');
 
         const newOptions = Object.assign({}, options, {
             depth: options.depth === null ? null : options.depth - 1,
@@ -76,17 +117,42 @@ export class CharToken implements Iterable<CharToken> {
             maxArrayLength: null,
         });
 
-        // Five space padding because that's the size of "Box< ".
+        // Five space padding because that's the size of "Character[##]< ".
+        const pad1 = ' '.repeat(3 - String(this.index).length);
+        const pad2 = ' '.repeat((this.type.length < 15) ? 15 - this.type.length : 0);
+        const type = `${this.type}${pad2}`;
         const padding = ' '.repeat(11);
-        const inner = inspect({
-            character: this.character,
-            class: this.class,
-            index: this.index,
-            line: this.line,
-            column: this.column,
-        }, newOptions).replace(/\n/g, `\n${padding}`);
-        return `${options.stylize('CharToken', 'special')}< ${inner} >`;
+        const outer = `Character[${pad1}${this.index}] `;
+        const innermost = {
+            value: this.value,      // 8 + 5
+            type: type,             // 8 + 15
+            index: this.index,      // 8 + 4
+            line: this.line,        // 8 + 4
+            column: this.column,    // 8 + 4
+        };
+        const inner = inspect(innermost, newOptions).replace(/\n/g, `\n${padding}`);
+        const result = `${options.stylize(outer, 'special')}< ${inner} >`;
+        return result;
     }
+
+    public static classify: ClassifyFunction = (char) => {
+        if (char === '\n') return CharType.Newline;
+        if (CharMap.has(char)) return CharMap.get(char)!;
+
+        let cls: CharType = CharType.Other;
+        const direct = CharMap.get(char);
+
+        for (const [CharType, CharTypeFn] of CharSpec) {
+            if (direct) {
+                cls = direct
+            } else if (CharTypeFn(char)) {
+                cls = CharType as CharType;
+            }
+        }
+
+        CharMap.set(char, cls);
+        return cls;
+    };
 
     /*
     toString(): string {
@@ -106,166 +172,27 @@ export class CharToken implements Iterable<CharToken> {
     */
 }
 
-export const CharSpec: CharClassType = [
-    [CharClass.Newline, (char) => char === '\n'],
-    [CharClass.Whitespace, (char) => /\s/u.test(char)],
-
-    // Unicode letters
-    [CharClass.Letter, (char) => /\p{L}/u.test(char)],
-
-    // Unicode digits
-    [CharClass.Digit, (char) => /\p{Nd}/u.test(char)],
-
-    [CharClass.Quote, (char) =>
-        /["'`]|\p{Pi}|\p{Pf}/u.test(char)
-    ],
-
-    [CharClass.Percent, (char) => char === '%'],
-    [CharClass.Dot, (char) => char === '.'],
-    [CharClass.LParen, (char) => char === '('],
-    [CharClass.RParen, (char) => char === ')'],
-    [CharClass.Comma, (char) => char === ','],
-    [CharClass.Slash, (char) => char === '/'],
-    [CharClass.Plus, (char) => char === '+'],
-    [CharClass.Minus, (char) => char === '-'],
-    [CharClass.Hash, (char) => char === '#'],
-
-    // Exponent marker is intentionally ASCII
-    [CharClass.Exponent, (char) => /[eE]/.test(char)],
-
-    [CharClass.Hex, (char) => /[a-f0-9]/i.test(char)],
-
-    [CharClass.Operator, (char) => {
-        switch (char) {
-            case '!': case '\\': case '*': case '@':
-            case '$': case '^': case '&': case '{':
-            case '}': case '[': case ']': case '|':
-            case ':': case ';': case '<': case '>':
-            case '?': case '~': case '`': case '=':
-                return true;
-            default:
-                return false;
-        }
-    }],
-
-    // Non-ASCII fallback
-    [CharClass.Unicode, (char) => /[^\x00-\x7F]/.test(char)],
-];
-
-export const classify: ClassifyFunction = (char) => {
-    if (char === '\n') return CharClass.Newline;
-    if (charMap.has(char)) return charMap.get(char)!;
-
-    let cls: CharClass;
-    const direct = charMap.get(char);
-
-    if (direct) cls = direct;
-    else if (/\p{L}/u.test(char)) cls = CharClass.Letter;
-    else if (/\p{Nd}/u.test(char)) cls = CharClass.Digit;
-    else if (/\s/u.test(char)) cls = CharClass.Whitespace;
-    else if (/[^\x00-\x7F]/.test(char)) cls = CharClass.Unicode;
-    else cls = CharClass.Other;
-
-    charMap.set(char, cls);
-    return cls;
-};
-
-export const charMap = new Map<string, CharClass>([
-    ['(', CharClass.LParen],
-    [')', CharClass.RParen],
-    ['+', CharClass.Plus],
-    ['-', CharClass.Minus],
-    ['#', CharClass.Hash],
-]);
-
 // CharStream.ts
-export class CharStream implements Iterable<CharToken>, Iterator<CharToken> {
-    private readonly maxLength: number = 50;
-    private readonly chars: string[];
-
+export class CharStream implements Iterator<Character>, Iterable<Character> {
+    private readonly source: string;
     private index: number = 0;
     private line: number = 1;
     private column: number = 1;
-
-    history: CharToken[] = [];
+    private history: Character[] = [];
 
     constructor(input: string) {
-        this.chars = CharStream.split(input, this.maxLength);
+        this.source = input.normalize('NFC');
+        this.consume();
     }
 
-    /* ------------------------- Iterator ------------------------- */
-    public get() {
-        //return this.next().value;
+    public consume(): Character {
+        const char = this.makeChar(this.source[this.index]!);
+        this.history.push(char);
+        this.advance(char);
+        return char;
     }
 
-    next(): IteratorResult<CharToken> {
-        if (this.isEOF()) return { value: this.EOFToken(), done: true };
-        return { value: this.consume(), done: false };
-    }
-
-    [Symbol.iterator](): Iterator<CharToken> {
-        this.reset();
-        return this; // the iterator is itself iterable
-    }
-
-    /* -------------------------------------------------- */
-    /* Internal                                           */
-    /* -------------------------------------------------- */
-
-    private isEOF() {
-        return this.index >= this.chars.length;
-    }
-
-    private EOFToken(): CharToken {
-        return new CharToken('', CharClass.EOF, this.index, this.line, this.column);
-    }
-
-    private makeToken(char: string): CharToken {
-        return new CharToken(char, undefined, this.index, this.line, this.column);
-    }
-
-    private advance(char: string): this {
-        this.index++;
-        if (char === '\n') {
-            this.line++;
-            this.column = 1;
-        } else {
-            this.column++;
-        }
-        return this;
-    }
-
-    private goto(token: CharToken): this {
-        this.index = token.index;
-        this.line = token.line;
-        this.column = token.column;
-        return this;
-    }
-
-    /* -------------------------------------------------- */
-    /* Core API                                          */
-    /* -------------------------------------------------- */
-
-    peek(): CharToken {
-        if (this.isEOF()) return this.EOFToken();
-        return this.makeToken(this.chars[this.index]!);
-    }
-
-    rewind(): CharToken | null {
-        const token = this.history.pop();
-        if (!token) return null;
-        this.goto(token);
-        return token;
-    }
-
-    previous(): CharToken | null {
-        const token = this.history.at(-1) ?? null;
-        if (!token) return null;
-        this.goto(token);
-        return token;
-    }
-
-    reset(): this {
+    public reset(): this {
         this.index = 0;
         this.line = 1;
         this.column = 1;
@@ -273,75 +200,46 @@ export class CharStream implements Iterable<CharToken>, Iterator<CharToken> {
         return this;
     }
 
-    /* -------------------------------------------------- */
-    /* Consumption Helpers                                */
-    /* -------------------------------------------------- */
-
-    consume(): CharToken {
-        const token = this.makeToken(this.chars[this.index]!);
-        this.history.push(token);
-        this.advance(token.character);
-        return token;
-    }
-
-    consumeIf(predicate: Predicate): CharToken | null {
-        const next = this.peek();
-        if (next.class === CharClass.EOF) return null;
-        if (!predicate(next)) return null;
-        return this.consume();
-    }
-
-    consumeWhile(predicate: Predicate): CharToken[] {
-        const consumed: CharToken[] = [];
-
-        while (true) {
-            const next = this.peek();
-            if (next.class === CharClass.EOF) break;
-            if (!predicate(next)) break;
-
-            consumed.push(this.consume());
+    next(): IteratorResult<Character> {
+        if (this.isEOF()) {
+            return { value: this.EOFChar(), done: true };
         }
 
-        return consumed;
+        return { value: this.consume(), done: false };
     }
 
-    consumeUntil(predicate: Predicate): CharToken[] {
-        const consumed: CharToken[] = [];
-
-        while (true) {
-            const next = this.peek();
-            if (next.class === CharClass.EOF) break;
-            if (predicate(next)) break;
-
-            consumed.push(this.consume());
-        }
-
-        return consumed;
+    [Symbol.iterator](): Iterator<Character> {
+        this.reset();
+        return this;
     }
 
-    /* -------------------------------------------------- */
-    /* Utilities                                         */
-    /* -------------------------------------------------- */
-    public static split(input: string, maxLength: number = 50): string[] {
-        const codePoints = Array.from(input.normalize('NFC'));
-        const result: string[] = [];
+    private isEOF() {
+        return this.index >= this.source.length;
+    }
 
-        let count = 0;
-        for (const ch of codePoints) {
-            result.push(ch);
-            count++;
-            if (ch === '\n' || count >= maxLength) {
-                if (ch !== '\n') result.push('\n');
-                count = 0;
-            }
+    private EOFChar(): Character {
+        return new Character('', CharType.EOF, this.index, this.line, this.column, this.source);
+    }
+
+    private makeChar(char: string): Character {
+        return new Character(char, undefined, this.index, this.line, this.column, this.source);
+    }
+
+    private advance(char: Character): this {
+        this.index++;
+        if (char.value === '\n' || char.type === CharType.Newline) {
+            this.line++;
+            this.column = 1;
+        } else {
+            this.column++;
         }
-        return result;
+        return this;
     }
 }
 
 
 // TESTING
-/*
+
 const test = () => {
     const options = {
         depth: null,
@@ -350,19 +248,19 @@ const test = () => {
     };
 
     const str = "This is a very long string";// that we want to split into multiple lines to make it more readable and fit within a specific display constraint.";
-    const test = new CharStream(str);
-    const result: CharToken[] = [];
+    const result = [];
+    const stream = new CharStream(str);
 
-    for (const token of test) {
+    //console.log(inspect(test, options));
 
-
-        result.push(token[Symbol.iterator]().next().value);
+    for (const char of stream) {
+        result.push(char);
+        console.log(inspect(char, options));
     }
 
-    const tokenTree = new PrettyTree(true, true);
+    console.log();
 
-    console.log(inspect(result, options))
+    console.log(Tree(result, 'Character Stream', 'Token', undefined, true, false));
 }
 
 test();
-*/

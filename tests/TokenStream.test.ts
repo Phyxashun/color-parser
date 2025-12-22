@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CharStream, CharClass } from '../src/TokenStream.ts'; // adjust path as needed
+import { CharStream, CharType } from '../src/TokenStream.ts'; // adjust path as needed
 
 describe('CharStream Iterator', () => {
     it('iterates over simple ASCII string', () => {
@@ -7,33 +7,33 @@ describe('CharStream Iterator', () => {
         const tokens = [];
 
         let result = stream.next();
-        while (result.value.class !== CharClass.EOF) {
-            tokens.push(result.value.character);
+        while (result.value.class !== CharType.EOF) {
+            tokens.push(result.value.value);
             result = stream.next();
         }
 
         expect(tokens).toEqual(['a', 'b', 'c']);
-        expect(result.value.class).toBe(CharClass.EOF);
+        expect(result.value.class).toBe(CharType.EOF);
     });
 
     it('peek() does not advance the stream', () => {
         const stream = new CharStream('xy');
         const firstPeek = stream.peek();
-        expect(firstPeek.character).toBe('x');
+        expect(firstPeek.value).toBe('x');
 
         const firstNext = stream.next().value;
-        expect(firstNext.character).toBe('x');
+        expect(firstNext.value).toBe('x');
 
         const secondPeek = stream.peek();
-        expect(secondPeek.character).toBe('y');
+        expect(secondPeek.value).toBe('y');
     });
 
     it('consume() is equivalent to next().value', () => {
         const stream = new CharStream('pq');
         const c1 = stream.consume();
         const n1 = stream.next().value;
-        expect(c1.character).toBe('p');
-        expect(n1.character).toBe('q');
+        expect(c1.value).toBe('p');
+        expect(n1.value).toBe('q');
     });
 
     it('rewind() rolls back one token', () => {
@@ -41,14 +41,14 @@ describe('CharStream Iterator', () => {
         const t1 = stream.next().value;
         const t2 = stream.next().value;
 
-        expect(t1.character).toBe('1');
-        expect(t2.character).toBe('2');
+        expect(t1.value).toBe('1');
+        expect(t2.value).toBe('2');
 
         const rewound = stream.rewind();
-        expect(rewound!.character).toBe('2');
+        expect(rewound!.value).toBe('2');
 
         const nextAfterRewind = stream.next().value;
-        expect(nextAfterRewind.character).toBe('2');
+        expect(nextAfterRewind.value).toBe('2');
     });
 
     it('handles Unicode characters correctly', () => {
@@ -56,8 +56,8 @@ describe('CharStream Iterator', () => {
         const chars = [];
         let token = stream.next().value;
 
-        while (token.class !== CharClass.EOF) {
-            chars.push(token.character);
+        while (token.class !== CharType.EOF) {
+            chars.push(token.value);
             token = stream.next().value;
         }
 
@@ -69,7 +69,7 @@ describe('CharStream Iterator', () => {
         const positions: { line: number; column: number }[] = [];
 
         let token = stream.next().value;
-        while (token.class !== CharClass.EOF) {
+        while (token.class !== CharType.EOF) {
             positions.push({ line: token.line, column: token.column });
             token = stream.next().value;
         }
@@ -88,15 +88,15 @@ describe('CharStream Iterator', () => {
         const tokens = [];
 
         let t = stream.next().value;
-        while (t.class !== CharClass.EOF) {
-            tokens.push({ character: t.character, class: t.class, line: t.line, column: t.column });
+        while (t.class !== CharType.EOF) {
+            tokens.push({ character: t.value, class: t.class, line: t.line, column: t.column });
             t = stream.next().value;
         }
 
         expect(tokens).toEqual([
-            { character: 'A', class: CharClass.Letter, line: 1, column: 1 },
-            { character: '\n', class: CharClass.Newline, line: 1, column: 2 },
-            { character: 'B', class: CharClass.Letter, line: 2, column: 1 },
+            { character: 'A', class: CharType.Letter, line: 1, column: 1 },
+            { character: '\n', class: CharType.Newline, line: 1, column: 2 },
+            { character: 'B', class: CharType.Letter, line: 2, column: 1 },
         ]);
     });
 });
