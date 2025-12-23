@@ -5,7 +5,7 @@ import { Tree } from './PrettyTree.ts';
 import { RESET, RED, YELLOW, GREEN, BLUE, BOLD, MAGENTA, WHITE, UNDERLINE, BrMAGENTA } from './AnsiCodes.ts';
 import TokenReport from './TokenReport.ts';
 import Banner from './Banner.ts';
-import { CharStream } from './TokenStream.ts';
+import { CharStream } from './CharacterStream.ts';
 
 /**
  * Deterministic Finite Automaton

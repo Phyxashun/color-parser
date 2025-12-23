@@ -1,25 +1,55 @@
+
 // index.ts
 
-import Tokenizer, { DiagnosticError, formatDiagnostic } from './src/Tokenizer.ts';
-import util from 'util';
+import CharacterStream from './src/CharacterStream.ts';
+import { inspect } from 'node:util';
 
-const options = {
-    depth: null,
+console.log();
+
+const inspectOptions = {
+    showHidden: false,
+    depth: 2,
     colors: true,
+    customInspect: true,
+    showProxy: false,
     maxArrayLength: null,
+    maxStringLength: null,
+    breakLength: 100,
+    compact: true,
+    sorted: false,
+    getters: false,
+    numericSeparator: true,
 };
 
-//const code = 'rgba(100, 255, -50, 50% - 10 + 20)';
+const strs = [
+    'rgba(100, 255, -50, 50% - 10 + 20)',
+    '#ffffff',
+    'rgba(100 200 255 / 50%)',
+    'Hello "TypeScript", and hello world!',
+];
 
-//const code = '#ffffff';
+const streams = new Map<string, CharacterStream>()
 
-//const code = 'rgba(100 200 255 / 50%)'
+for (const str of strs) {
+    streams.set(str, new CharacterStream(str));
+}
 
-const code = "Hello 'TypeScript', and hello world!";
+for (const str of strs) {
+    const stream = streams.get(str) as CharacterStream;
 
-const tokenizer = new Tokenizer(code);
-const tokens = tokenizer.tokens;
+    console.log(`1. RAW STRING [${str}]:\t${str}\n`);
+    for (const char of stream) {
+        console.log(inspect(char, inspectOptions));
+    }
+    console.log('\n');
+}
 
-for (const token of tokens) {
-    console.log(util.inspect(token, options));
+for (const index in strs) {
+    const stream = streams.get(strs[index]) as CharacterStream;
+
+    console.log(`2. RAW STRING [${index}]:\t${strs[index]}\n`);
+    for (const char of stream) {
+        console.log(inspect(char, inspectOptions));
+    }
+    console.log('\n');
 }
