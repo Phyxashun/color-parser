@@ -1,17 +1,37 @@
-/// <reference types='../types/CharacterStream.d.ts' />
-
 // src/CharacterStream.ts
 
 import { inspect, type InspectOptions } from 'node:util';
-import type {
-    CharType,
-    CharTypeFn,
-    ClassifyFunction,
-    CharSpecType,
-    Predicate,
-    Char,
-    ICharacter
-} from '../types/CharacterStream.d.ts';
+
+type CharType = typeof Character.CharType[keyof typeof Character.CharType];
+type CharTypeFn = (char: string) => boolean;
+type ClassifyFunction = (char: string) => CharType;
+type CharSpecType = [CharType, CharTypeFn][] // SigmaType
+type Predicate = (token: Character) => boolean;
+type Char = string;
+
+// ICharacter
+export interface ICharacter {
+    value: Char | undefined;
+    type: CharType | undefined;
+    index: number;
+    line: number;
+    column: number;
+}
+
+const inspectOptions: InspectOptions = {
+    showHidden: false,
+    depth: 2,
+    colors: true,
+    customInspect: true,
+    showProxy: false,
+    maxArrayLength: null,
+    maxStringLength: null,
+    breakLength: 100,
+    compact: true,
+    sorted: false,
+    getters: false,
+    numericSeparator: true,
+};
 
 // Character.ts
 export class Character implements ICharacter {
@@ -23,7 +43,11 @@ export class Character implements ICharacter {
 
     constructor(char: Partial<ICharacter> & { value?: Char }) {
         this.value = char.value;
-        this.type = char.type ?? Character.classify(char.value!);
+        this.type =
+            char.type ??
+            (char.value === undefined
+                ? Character.CharType.Other
+                : Character.classify(char.value));
         this.index = char.index ?? 0;
         this.line = char.line ?? 1;
         this.column = char.column ?? 1;
@@ -170,7 +194,7 @@ export class Character implements ICharacter {
     ]);
 
     public static classify: ClassifyFunction = (char: string): CharType => {
-        if (char === undefined) return this.CharType.Other;
+        if (!char) return this.CharType.Other;
         if (Character.CharMap.has(char)) return this.CharMap.get(char) as CharType;
         for (const [charType, fn] of this.CharSpec) {
             if (fn(char)) return charType as CharType;
@@ -180,24 +204,48 @@ export class Character implements ICharacter {
 }
 
 // CharacterStream.ts
+/**
+ * Invariants:
+ * - cursor always points to the next unread source index
+ * - character represents the current character
+ * - EOF is a real Character emitted once
+ * - line increments AFTER a newline is consumed
+ */
 export default class CharacterStream implements Iterator<Character>, Iterable<Character> {
     // Raw source input string
     private readonly source: string;
 
     // Current Character created from source string
-    private character: Character;
+    private character!: Character;
+    private cursor: number = 0;
 
     // History of Characters created
     #history: Character[] = [];
 
-    constructor(input: string | undefined) {
-        if (!input) input = undefined
-        // Raw source string normalized for unicode
+    constructor(input?: string) {
         this.source = input ? input.normalize('NFC') : '';
+        this.init();
+    }
 
-        // set the first character of the raw source string
-        if (input = '') this.character = new Character({ value: undefined })
-        else this.character = new Character({ value: this.source[0]! });
+    private init() {
+        this.cursor = 0;
+        this.#history.length = 0;
+        if (this.source.length === 0) {
+            this.character = new Character({
+                value: '',
+                type: Character.CharType.EOF,
+                index: 0,
+                line: 1,
+                column: 1,
+            });
+        } else {
+            this.character = new Character({
+                value: this.source[this.cursor],
+                index: 0,
+                line: 1,
+                column: 1,
+            });
+        }
     }
 
     public toString() {
@@ -205,24 +253,17 @@ export default class CharacterStream implements Iterator<Character>, Iterable<Ch
     }
 
     public [inspect.custom]() {
-        return `Character Stream <${this.toString()}>`;
+        return `Character Stream <${inspect(this.character, {
+            colors: true,
+            customInspect: true,
+        })}>`;
     }
 
     public get(): Character {
         return this.character;
     }
 
-    public set(char: Character) {
-        this.character = new Character({
-            value: char.value,
-            type: Character.classify(char.value!),
-            index: char.index,
-            line: char.line,
-            column: char.column,
-        });
-    }
-
-    public get value(): string | undefined { return this.character.value; }
+    public get value(): string { return this.character.value as string; }
     public get type(): CharType { return this.character.type; }
     public get index(): number { return this.character.index; }
     public get line(): number { return this.character.line; }
@@ -230,57 +271,53 @@ export default class CharacterStream implements Iterator<Character>, Iterable<Ch
     public get history(): Character[] { return this.#history; }
 
     public next(): IteratorResult<Character> {
-        if (this.isEOF()) return { done: true, value: this.EOFChar() };
-        this.consume();
-        return { done: false, value: this.character };
+        if (this.character.type === Character.CharType.EOF) {
+            return { done: true, value: this.character };
+        }
+
+        const value = this.consume();
+
+        return {
+            done: false,
+            value,
+        };
     }
 
-    // Save the currect source character Charater object and advance to next
+    // Save the current source character Character object and advance to next
     public consume(): Character {
-        this.#history.push(this.character);
-        this.character = this.advance();
-        return this.character;
+        const current = this.character;
+        if (current.type !== Character.CharType.EOF) {
+            this.#history.push(current);
+            this.advance();
+        }
+        return current;
     }
 
     // Advance counters and return the next source string character
-    public advance(): Character {
-        // Update counters
-        let newIndex = ++this.character.index;      // increase current index
-        let newLine = this.character.line;          // same line unless precessed '\n'
-        let newColumn = this.character.column;      // increase column unless after '\n'
-        let newValue = this.source[newIndex]!
-        let newType = Character.classify(newValue);
+    private advance(): void {
+        const prev = this.character;
+        this.cursor++;
 
-        if (this.isEOF()) return this.EOFChar();
-
-        const result = new Character({
-            value: newValue,
-            type: newType,
-            index: newIndex,
-            line: newLine,
-            column: newColumn,
-        });
-
-        if (newValue === '\n' || newType === Character.CharType.Newline) {
-            result.value = '\n';
-            result.type = Character.CharType.Newline;
-            result.index = newIndex;
-            result.line = newLine;
-            result.column = newColumn + 1;
-        } else {
-            result.line = newLine;
-            result.column = 1;
+        if (this.isAtEnd()) {
+            this.character = this.EOFChar();
+            return;
         }
 
-        return result;
+        const value = this.source[this.cursor];
+
+        const isNewline =
+            prev.value === '\n' || prev.type === Character.CharType.Newline;
+
+        this.character = new Character({
+            value,
+            index: this.cursor,
+            line: isNewline ? prev.line + 1 : prev.line,
+            column: isNewline ? 1 : prev.column + 1,
+        });
     }
 
     public reset(): this {
-        // Reset #history
-        this.#history.length = 0;
-
-        // Reset the current character
-        this.character = new Character({ value: this.source[0]! });
+        this.init();
         return this;
     }
 
@@ -289,17 +326,24 @@ export default class CharacterStream implements Iterator<Character>, Iterable<Ch
         return this;
     }
 
-    public isEOF() {
-        return this.character.index >= this.source.length;
+    // INTERNAL — structural
+    private isAtEnd(): boolean {
+        return this.cursor >= this.source.length;
     }
 
+    // PUBLIC — semantic
+    public isEOF(): boolean {
+        return this.character.type === Character.CharType.EOF;
+    }
+
+    // EOF is positioned one column past the last character
     public EOFChar(): Character {
         return new Character({
             value: '',
             type: Character.CharType.EOF,
-            index: this.character.index,
+            index: this.cursor,
             line: this.character.line,
-            column: this.character.column,
+            column: this.character.column + 1,
         });
     }
 }
