@@ -1,22 +1,17 @@
+/// <reference types='../types/CharacterStream.d.ts' />
+
 // src/CharacterStream.ts
 
 import { inspect, type InspectOptions } from 'node:util';
-
-export type CharType = typeof Character.CharType[keyof typeof Character.CharType];
-export type CharTypeFn = (char: string) => boolean;
-export type ClassifyFunction = (char: string) => CharType;
-export type CharTypeType = [CharType, CharTypeFn][] // SigmaType
-export type Predicate = (token: Character) => boolean;
-export type Char = string;
-
-// ICharacter
-export interface ICharacter {
-    value: Char | undefined;
-    type: CharType | undefined;
-    index: number;
-    line: number;
-    column: number;
-}
+import type {
+    CharType,
+    CharTypeFn,
+    ClassifyFunction,
+    CharSpecType,
+    Predicate,
+    Char,
+    ICharacter
+} from '../types/CharacterStream.d.ts';
 
 // Character.ts
 export class Character implements ICharacter {
